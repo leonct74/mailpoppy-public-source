@@ -1,0 +1,345 @@
+{
+  "id": "com.mailpoppy.desktop",
+  "name": "MailPoppy",
+  "version": "0.1.10",
+  "description": "Run your own private mail backend on your AWS account — deploy, manage, and tear it down.",
+  "icon": "frontend/mailpoppy-icon.png",
+  "permissionSet": {
+    "id": "mailpoppy-backend",
+    "name": "MailPoppy backend",
+    "description": "Deploy & manage the MailPoppy mail backend, scoped to MailpoppyMailStack-* / mailpoppy* resources. If you also use CrewPoppy, mail addressed to an agent-owned mailbox is handed to your CrewPoppy agents. MailPoppy can start your agents; it can never read their data or touch anything else of theirs.",
+    "grants": [
+      {
+        "service": "cloudformation",
+        "actions": [
+          "CreateStack",
+          "UpdateStack",
+          "DeleteStack",
+          "DescribeStacks",
+          "DescribeStackEvents",
+          "DescribeStackResources",
+          "ListStackResources",
+          "GetTemplate",
+          "CreateChangeSet",
+          "DescribeChangeSet",
+          "ExecuteChangeSet",
+          "DeleteChangeSet",
+          "TagResource"
+        ],
+        "resourceScope": "arn:aws:cloudformation:*:*:stack/MailpoppyMailStack/*"
+      },
+      {
+        "service": "cloudformation",
+        "actions": [
+          "ValidateTemplate",
+          "GetTemplateSummary"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "iam",
+        "actions": [
+          "CreateRole",
+          "DeleteRole",
+          "GetRole",
+          "TagRole",
+          "UntagRole",
+          "AttachRolePolicy",
+          "DetachRolePolicy",
+          "PutRolePolicy",
+          "DeleteRolePolicy",
+          "GetRolePolicy",
+          "ListRolePolicies",
+          "ListAttachedRolePolicies",
+          "PassRole"
+        ],
+        "resourceScope": "arn:aws:iam::*:role/MailpoppyMailStack-*"
+      },
+      {
+        "service": "iam",
+        "actions": [
+          "SimulatePrincipalPolicy"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "lambda",
+        "actions": [
+          "CreateFunction",
+          "DeleteFunction",
+          "GetFunction",
+          "GetFunctionConfiguration",
+          "UpdateFunctionCode",
+          "UpdateFunctionConfiguration",
+          "AddPermission",
+          "RemovePermission",
+          "InvokeFunction",
+          "TagResource",
+          "UntagResource",
+          "ListTags"
+        ],
+        "resourceScope": "arn:aws:lambda:*:*:function:MailpoppyMailStack-*"
+      },
+      {
+        "service": "lambda",
+        "actions": [
+          "InvokeFunction"
+        ],
+        "resourceScope": "arn:aws:lambda:*:*:function:CrewPoppyRunner"
+      },
+      {
+        "service": "dynamodb",
+        "actions": [
+          "CreateTable",
+          "DeleteTable",
+          "DescribeTable",
+          "UpdateTable",
+          "DescribeContinuousBackups",
+          "UpdateContinuousBackups",
+          "DescribeTimeToLive",
+          "UpdateTimeToLive",
+          "TagResource",
+          "UntagResource",
+          "ListTagsOfResource",
+          "GetItem",
+          "BatchGetItem",
+          "PutItem",
+          "UpdateItem",
+          "DeleteItem",
+          "Query",
+          "Scan",
+          "BatchWriteItem",
+          "ConditionCheckItem"
+        ],
+        "resourceScope": "arn:aws:dynamodb:*:*:table/MailpoppyMailStack-*"
+      },
+      {
+        "service": "dynamodb",
+        "actions": [
+          "Query",
+          "Scan"
+        ],
+        "resourceScope": "arn:aws:dynamodb:*:*:table/MailpoppyMailStack-*/index/*"
+      },
+      {
+        "service": "logs",
+        "actions": [
+          "CreateLogGroup",
+          "DeleteLogGroup",
+          "DescribeLogGroups",
+          "PutRetentionPolicy",
+          "TagResource"
+        ],
+        "resourceScope": "arn:aws:logs:*:*:log-group:/aws/lambda/MailpoppyMailStack-*"
+      },
+      {
+        "service": "sns",
+        "actions": [
+          "CreateTopic",
+          "DeleteTopic",
+          "Subscribe",
+          "Unsubscribe",
+          "GetTopicAttributes",
+          "SetTopicAttributes",
+          "GetSubscriptionAttributes",
+          "TagResource",
+          "UntagResource"
+        ],
+        "resourceScope": "arn:aws:sns:*:*:MailpoppyMailStack-*"
+      },
+      {
+        "service": "events",
+        "actions": [
+          "PutRule",
+          "DeleteRule",
+          "DescribeRule",
+          "PutTargets",
+          "RemoveTargets",
+          "ListTargetsByRule",
+          "TagResource",
+          "UntagResource"
+        ],
+        "resourceScope": "arn:aws:events:*:*:rule/MailpoppyMailStack-*"
+      },
+      {
+        "service": "apigateway",
+        "actions": [
+          "POST",
+          "GET",
+          "PATCH",
+          "PUT",
+          "DELETE",
+          "TagResource",
+          "UntagResource"
+        ],
+        "resourceScope": "arn:aws:apigateway:*::/apis*"
+      },
+      {
+        "service": "apigateway",
+        "actions": [
+          "POST",
+          "GET",
+          "PATCH",
+          "PUT",
+          "DELETE",
+          "TagResource",
+          "UntagResource"
+        ],
+        "resourceScope": "arn:aws:apigateway:*::/v2/apis*"
+      },
+      {
+        "service": "apigateway",
+        "actions": [
+          "POST",
+          "GET",
+          "PATCH",
+          "PUT",
+          "DELETE",
+          "TagResource",
+          "UntagResource"
+        ],
+        "resourceScope": "arn:aws:apigateway:*::/tags*"
+      },
+      {
+        "service": "s3",
+        "actions": [
+          "CreateBucket",
+          "DeleteBucket",
+          "PutBucketPolicy",
+          "GetBucketPolicy",
+          "DeleteBucketPolicy",
+          "PutEncryptionConfiguration",
+          "GetEncryptionConfiguration",
+          "PutBucketPublicAccessBlock",
+          "GetBucketPublicAccessBlock",
+          "PutBucketTagging",
+          "PutLifecycleConfiguration",
+          "GetLifecycleConfiguration",
+          "PutBucketCORS",
+          "GetBucketCORS",
+          "ListBucket",
+          "HeadBucket"
+        ],
+        "resourceScope": "arn:aws:s3:::mailpoppy*"
+      },
+      {
+        "service": "s3",
+        "actions": [
+          "GetObject",
+          "PutObject",
+          "DeleteObject"
+        ],
+        "resourceScope": "arn:aws:s3:::mailpoppy*/*"
+      },
+      {
+        "service": "s3",
+        "actions": [
+          "ListAllMyBuckets"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "cognito-idp",
+        "actions": [
+          "CreateUserPool",
+          "CreateUserPoolClient",
+          "DescribeUserPool",
+          "DescribeUserPoolClient",
+          "GetUserPoolMfaConfig",
+          "TagResource",
+          "UntagResource",
+          "ListUsers"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "cognito-idp",
+        "actions": [
+          "DeleteUserPool",
+          "UpdateUserPool",
+          "DeleteUserPoolClient",
+          "UpdateUserPoolClient",
+          "SetUserPoolMfaConfig",
+          "AdminCreateUser",
+          "AdminSetUserPassword",
+          "AdminDeleteUser"
+        ],
+        "resourceScope": "tagged-as-self"
+      },
+      {
+        "service": "ses",
+        "actions": [
+          "CreateReceiptRuleSet",
+          "CreateReceiptRule",
+          "DeleteReceiptRule",
+          "DeleteReceiptRuleSet",
+          "DescribeReceiptRuleSet",
+          "DescribeActiveReceiptRuleSet",
+          "SetActiveReceiptRuleSet",
+          "CreateEmailIdentity",
+          "GetEmailIdentity",
+          "DeleteEmailIdentity",
+          "ListEmailIdentities",
+          "GetAccount",
+          "GetSendStatistics",
+          "PutAccountDetails",
+          "PutEmailIdentityMailFromAttributes",
+          "SendEmail"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "route53",
+        "actions": [
+          "ListHostedZonesByName",
+          "ListResourceRecordSets",
+          "ChangeResourceRecordSets"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "guardduty",
+        "actions": [
+          "CreateMalwareProtectionPlan",
+          "GetMalwareProtectionPlan",
+          "UpdateMalwareProtectionPlan",
+          "DeleteMalwareProtectionPlan",
+          "ListMalwareProtectionPlans",
+          "TagResource",
+          "UntagResource",
+          "ListTagsForResource"
+        ],
+        "resourceScope": "*"
+      },
+      {
+        "service": "sts",
+        "actions": [
+          "GetCallerIdentity"
+        ],
+        "resourceScope": "*"
+      }
+    ],
+    "requiredTags": [
+      "agentspoppy:connection"
+    ],
+    "limits": null
+  },
+  "frontend": {
+    "entry": "frontend/index.html"
+  },
+  "backend": {
+    "entry": "backend/index.cjs",
+    "transport": "http",
+    "runtime": "node22"
+  },
+  "teardown": {
+    "endpoint": "/teardown"
+  },
+  "capabilities": [
+    "aws:credentials",
+    "connection:read",
+    "backend:invoke",
+    "host:openExternal",
+    "host:notify"
+  ]
+}

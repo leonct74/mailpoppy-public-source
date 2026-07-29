@@ -1,0 +1,275 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Mailpoppy DEPLOY-TIME permissions (DESIGN §15) — what's needed to create/update/delete the
+  Mailpoppy backend stack (MailpoppyMailStack) via CloudFormation. This is broader than the
+  provisioning policy because the stack creates IAM roles. The least-privilege shape:
+    - A CloudFormation SERVICE ROLE (MailpoppyDeploymentRole) holds the broad resource perms.
+    - The desktop passes that role to CloudFormation on CreateStack/UpdateStack (RoleARN).
+    - The admin's OWN identity then only needs cloudformation:* on Mailpoppy stacks + iam:PassRole
+      for this role (the optional MailpoppyDeployer policy below).
+  Resources the stack touches are scoped to "MailpoppyMailStack-*" / "mailpoppy*" where AWS
+  supports resource-level permissions.
+
+Parameters:
+  AttachDeployerToUser:
+    Type: String
+    Default: ""
+    Description: >
+      (Optional) Existing IAM user to attach the narrow MailpoppyDeployer policy to
+      (cloudformation:* on Mailpoppy stacks + iam:PassRole for the deployment role). Leave blank
+      to skip (e.g. if you deploy as an admin or attach it yourself).
+
+Conditions:
+  HasUser: !Not [!Equals [!Ref AttachDeployerToUser, ""]]
+
+Resources:
+  # The CloudFormation service role — pass this on CreateStack/UpdateStack so CloudFormation
+  # (not the human) holds the broad create permissions.
+  MailpoppyDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: MailpoppyDeploymentRole
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudformation.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: MailpoppyDeployPermissions
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudFormationStack
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:DescribeStackResources
+                  - cloudformation:ListStackResources
+                  - cloudformation:GetTemplate
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:TagResource
+                Resource: arn:aws:cloudformation:*:*:stack/MailpoppyMailStack/*
+              - Sid: CloudFormationValidate
+                Effect: Allow
+                Action: [cloudformation:ValidateTemplate, cloudformation:GetTemplateSummary]
+                Resource: "*"
+              - Sid: CapabilityCheck
+                Effect: Allow
+                Action: [iam:SimulatePrincipalPolicy]
+                Resource: "*"
+              - Sid: IamRolesForStack
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                Resource: arn:aws:iam::*:role/MailpoppyMailStack-*
+              # Scoped by resource to this stack's own roles (Lambda exec, Cognito SMS,
+              # GuardDuty scan). No iam:PassedToService condition: some services
+              # (e.g. Cognito CreateUserPool) don't populate that key, so a condition
+              # there silently denies the pass and the stack rolls back.
+              - Sid: IamPassRoleToStackServices
+                Effect: Allow
+                Action: [iam:PassRole]
+                Resource: arn:aws:iam::*:role/MailpoppyMailStack-*
+              - Sid: GuardDutyMalwareProtection
+                Effect: Allow
+                Action:
+                  - guardduty:CreateMalwareProtectionPlan
+                  - guardduty:GetMalwareProtectionPlan
+                  - guardduty:UpdateMalwareProtectionPlan
+                  - guardduty:DeleteMalwareProtectionPlan
+                  - guardduty:ListMalwareProtectionPlans
+                  - guardduty:TagResource
+                  - guardduty:UntagResource
+                  - guardduty:ListTagsForResource
+                Resource: "*"
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:DeleteFunction
+                  - lambda:GetFunction
+                  - lambda:GetFunctionConfiguration
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:InvokeFunction
+                  - lambda:TagResource
+                  - lambda:UntagResource
+                  - lambda:ListTags
+                Resource: arn:aws:lambda:*:*:function:MailpoppyMailStack-*
+              - Sid: DynamoDb
+                Effect: Allow
+                Action:
+                  - dynamodb:CreateTable
+                  - dynamodb:DeleteTable
+                  - dynamodb:DescribeTable
+                  - dynamodb:UpdateTable
+                  - dynamodb:DescribeContinuousBackups
+                  - dynamodb:UpdateContinuousBackups
+                  - dynamodb:DescribeTimeToLive
+                  - dynamodb:UpdateTimeToLive
+                  - dynamodb:TagResource
+                  - dynamodb:UntagResource
+                  - dynamodb:ListTagsOfResource
+                Resource: arn:aws:dynamodb:*:*:table/MailpoppyMailStack-*
+              - Sid: Cognito
+                Effect: Allow
+                Action:
+                  - cognito-idp:CreateUserPool
+                  - cognito-idp:DeleteUserPool
+                  - cognito-idp:UpdateUserPool
+                  - cognito-idp:DescribeUserPool
+                  - cognito-idp:CreateUserPoolClient
+                  - cognito-idp:DeleteUserPoolClient
+                  - cognito-idp:UpdateUserPoolClient
+                  - cognito-idp:DescribeUserPoolClient
+                  - cognito-idp:SetUserPoolMfaConfig
+                  - cognito-idp:GetUserPoolMfaConfig
+                  - cognito-idp:TagResource
+                  - cognito-idp:UntagResource
+                Resource: "*"
+              - Sid: ApiGatewayV2
+                Effect: Allow
+                Action:
+                  - apigateway:POST
+                  - apigateway:GET
+                  - apigateway:PATCH
+                  - apigateway:PUT
+                  - apigateway:DELETE
+                  - apigateway:TagResource
+                  - apigateway:UntagResource
+                Resource:
+                  - arn:aws:apigateway:*::/apis
+                  - arn:aws:apigateway:*::/apis/*
+              - Sid: Sns
+                Effect: Allow
+                Action:
+                  - sns:CreateTopic
+                  - sns:DeleteTopic
+                  - sns:Subscribe
+                  - sns:Unsubscribe
+                  - sns:GetTopicAttributes
+                  - sns:SetTopicAttributes
+                  - sns:GetSubscriptionAttributes
+                  - sns:TagResource
+                  - sns:UntagResource
+                Resource: arn:aws:sns:*:*:MailpoppyMailStack-*
+              - Sid: EventBridge
+                Effect: Allow
+                Action:
+                  - events:PutRule
+                  - events:DeleteRule
+                  - events:DescribeRule
+                  - events:PutTargets
+                  - events:RemoveTargets
+                  - events:ListTargetsByRule
+                  - events:TagResource
+                  - events:UntagResource
+                Resource: arn:aws:events:*:*:rule/MailpoppyMailStack-*
+              - Sid: SesReceiptAndIdentity
+                Effect: Allow
+                Action:
+                  - ses:CreateReceiptRuleSet
+                  - ses:CreateReceiptRule
+                  - ses:DeleteReceiptRule
+                  - ses:DeleteReceiptRuleSet
+                  - ses:DescribeReceiptRuleSet
+                  - ses:DescribeActiveReceiptRuleSet
+                  - ses:SetActiveReceiptRuleSet
+                  - ses:CreateEmailIdentity
+                  - ses:GetEmailIdentity
+                  - ses:DeleteEmailIdentity
+                Resource: "*"
+              - Sid: S3MailpoppyBuckets
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:DeleteBucket
+                  - s3:PutBucketPolicy
+                  - s3:GetBucketPolicy
+                  - s3:DeleteBucketPolicy
+                  - s3:PutEncryptionConfiguration
+                  - s3:GetEncryptionConfiguration
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:GetBucketPublicAccessBlock
+                  - s3:PutBucketTagging
+                  - s3:PutLifecycleConfiguration
+                  - s3:GetLifecycleConfiguration
+                  - s3:PutBucketCORS
+                  - s3:GetBucketCORS
+                  - s3:ListBucket
+                Resource: arn:aws:s3:::mailpoppy*
+              - Sid: S3MailpoppyObjects
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: arn:aws:s3:::mailpoppy*/*
+              - Sid: LambdaLogGroups
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DeleteLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:PutRetentionPolicy
+                  - logs:TagResource
+                Resource: arn:aws:logs:*:*:log-group:/aws/lambda/MailpoppyMailStack-*
+
+  # Optional narrow policy for the human/identity that triggers the deploy: kick off
+  # CloudFormation on Mailpoppy stacks and pass the service role above. Nothing else.
+  MailpoppyDeployerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Condition: HasUser
+    Properties:
+      ManagedPolicyName: MailpoppyDeployer
+      Description: Lets an admin start a Mailpoppy stack deploy via the MailpoppyDeploymentRole.
+      Users: [!Ref AttachDeployerToUser]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DriveCloudFormation
+            Effect: Allow
+            Action:
+              - cloudformation:CreateStack
+              - cloudformation:UpdateStack
+              - cloudformation:DeleteStack
+              - cloudformation:DescribeStacks
+              - cloudformation:DescribeStackEvents
+              - cloudformation:DescribeStackResources
+              - cloudformation:ListStackResources
+              - cloudformation:GetTemplate
+            Resource: arn:aws:cloudformation:*:*:stack/MailpoppyMailStack/*
+          - Sid: PassDeploymentRole
+            Effect: Allow
+            Action: [iam:PassRole]
+            Resource: !GetAtt MailpoppyDeploymentRole.Arn
+            Condition:
+              StringEquals:
+                iam:PassedToService: cloudformation.amazonaws.com
+          - Sid: CapabilityCheck
+            Effect: Allow
+            Action: [iam:SimulatePrincipalPolicy]
+            Resource: "*"
+
+Outputs:
+  DeploymentRoleArn:
+    Description: Pass this as the RoleARN when calling cloudformation:CreateStack/UpdateStack.
+    Value: !GetAtt MailpoppyDeploymentRole.Arn

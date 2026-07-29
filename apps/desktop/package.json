@@ -1,0 +1,51 @@
+{
+  "name": "@mailpoppy/desktop",
+  "version": "0.0.0",
+  "license": "PolyForm-Shield-1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:dev:clean": "lsof -ti tcp:1420 | xargs kill -9 2>/dev/null; lsof -ti tcp:8787 | xargs kill -9 2>/dev/null; pkill -9 -f 'apps/desktop/src-tauri/target/debug/mailpoppy' 2>/dev/null; tauri dev",
+    "tauri:build": "tauri build",
+    "build:bundle": "node node-sidecar/scripts/build-node-bundle.mjs"
+  },
+  "dependencies": {
+    "@mailpoppy/api-client": "*",
+    "@mailpoppy/core": "*",
+    "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-opener": "^2.2.6",
+    "amazon-cognito-identity-js": "^6.3.12",
+    "clsx": "^2.1.1",
+    "dompurify": "^3.1.6",
+    "firebase": "^12.15.0",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "lucide-react": "^1.17.0",
+    "marked": "^12.0.2",
+    "pdfjs-dist": "^6.1.200",
+    "postal-mime": "^2.2.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@tauri-apps/cli": "^2.11.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/libsodium-wrappers-sumo": "^0.7.8",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "jsdom": "^25.0.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

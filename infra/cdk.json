@@ -1,0 +1,3 @@
+{
+  "app": "tsx bin/mailpoppy.ts"
+}

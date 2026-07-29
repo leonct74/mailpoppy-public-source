@@ -1,0 +1,21 @@
+{
+  "name": "@mailpoppy/infra",
+  "version": "0.0.0",
+  "license": "PolyForm-Shield-1.0.0",
+  "private": true,
+  "scripts": {
+    "synth": "cdk synth",
+    "deploy": "cdk deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.160.0",
+    "constructs": "^10.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "aws-cdk": "^2.160.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

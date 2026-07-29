@@ -1,0 +1,120 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "Identity",
+      "Effect": "Allow",
+      "Action": ["sts:GetCallerIdentity"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CapabilityCheck",
+      "Effect": "Allow",
+      "Action": ["iam:SimulatePrincipalPolicy"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Route53",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ListHostedZonesByName",
+        "route53:ListResourceRecordSets",
+        "route53:ChangeResourceRecordSets"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "Ses",
+      "Effect": "Allow",
+      "Action": [
+        "ses:CreateEmailIdentity",
+        "ses:GetEmailIdentity",
+        "ses:ListEmailIdentities",
+        "ses:DeleteEmailIdentity",
+        "ses:GetAccount",
+        "ses:GetSendStatistics",
+        "ses:PutAccountDetails",
+        "ses:PutEmailIdentityMailFromAttributes",
+        "ses:SendEmail",
+        "ses:CreateReceiptRuleSet",
+        "ses:CreateReceiptRule",
+        "ses:DescribeActiveReceiptRuleSet",
+        "ses:SetActiveReceiptRuleSet"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "S3ListForReadiness",
+      "Effect": "Allow",
+      "Action": ["s3:ListAllMyBuckets"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "CloudFormationStack",
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:CreateStack",
+        "cloudformation:UpdateStack",
+        "cloudformation:DeleteStack"
+      ],
+      "Resource": "arn:aws:cloudformation:*:*:stack/MailpoppyMailStack/*"
+    },
+    {
+      "Sid": "S3MailpoppyBuckets",
+      "Effect": "Allow",
+      "Action": [
+        "s3:CreateBucket",
+        "s3:DeleteBucket",
+        "s3:PutBucketPolicy",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::mailpoppy-*"
+    },
+    {
+      "Sid": "S3MailpoppyObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::mailpoppy-*/*"
+    },
+    {
+      "Sid": "StackBucket",
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket", "s3:DeleteBucket"],
+      "Resource": "arn:aws:s3:::mailpoppymailstack-*"
+    },
+    {
+      "Sid": "StackObjects",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Resource": "arn:aws:s3:::mailpoppymailstack-*/*"
+    },
+    {
+      "Sid": "StackTables",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:BatchWriteItem",
+        "dynamodb:GetItem",
+        "dynamodb:Query",
+        "dynamodb:Scan",
+        "dynamodb:DeleteItem",
+        "dynamodb:DeleteTable"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/MailpoppyMailStack-*"
+    },
+    {
+      "Sid": "MailboxAdmin",
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:AdminCreateUser",
+        "cognito-idp:AdminSetUserPassword",
+        "cognito-idp:AdminDeleteUser",
+        "cognito-idp:ListUsers",
+        "cognito-idp:DeleteUserPool"
+      ],
+      "Resource": "arn:aws:cognito-idp:*:*:userpool/*"
+    }
+  ]
+}

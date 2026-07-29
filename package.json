@@ -1,0 +1,24 @@
+{
+  "name": "mailpoppy",
+  "version": "0.0.0",
+  "license": "PolyForm-Shield-1.0.0",
+  "private": true,
+  "description": "Host email for your own domains inside your own AWS account.",
+  "workspaces": [
+    "packages/*",
+    "apps/desktop",
+    "apps/desktop/node-sidecar",
+    "infra",
+    "lambdas"
+  ],
+  "scripts": {
+    "typecheck": "tsc -b packages/core packages/api-client && npm run typecheck -w @mailpoppy/lambdas && npm run typecheck -w @mailpoppy/infra",
+    "test": "npm run test -w @mailpoppy/core && npm run test -w @mailpoppy/desktop && npm run test -w @mailpoppy/desktop-sidecar",
+    "desktop": "npm run dev -w @mailpoppy/desktop",
+    "sidecar": "npm run dev -w @mailpoppy/desktop-sidecar",
+    "synth": "npm run synth -w @mailpoppy/infra"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

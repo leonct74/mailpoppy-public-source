@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Core capability for the main window. No shell permissions are exposed to the webview (the shell spawns no subprocess at all — the provisioning backend runs on the AgentsPoppy host's shared Node runtime). `opener:default` lets the webview hand https attachment-download URLs to the system browser — it bundles allow-open-url WITH the default http/https/mailto/tel scope. (allow-open-url alone enables the command but grants no URL scope, so every openUrl is denied.) `core:window:allow-show` lets the frontend reveal the window once it has painted its first frame — the window launches hidden to avoid a blank-webview flash.",
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:default", "core:window:allow-show"]
+}

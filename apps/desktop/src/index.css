@@ -1,0 +1,140 @@
+@import "tailwindcss";
+@import "./poppy.css";
+
+/* The Stitch design exports (../stitch) are reference material, not app source.
+   Keep Tailwind from scanning them so their throwaway classes don't bloat the
+   production bundle. */
+@source not "../stitch";
+
+/* ─────────────────────────────────────────────────────────────────────────
+   MailPoppy desktop — skinned on the AgentsPoppy poppy design kit.
+
+   Every semantic token below maps onto the kit's --poppy-* variables
+   (src/poppy.css, vendored from @agentspoppy/extension-sdk), so the app is a
+   citizen of the host console: warm graphite surfaces, ivory text, ONE
+   identity accent. The contract is the SDK's DESIGN.md — tokens only, no raw
+   hex in components, no clay, no backdrop-filter, no font overrides.
+
+   Tailwind v4 exposes every --color-* as utilities (bg-surface,
+   text-on-surface-variant, border-outline-variant, …), so views build purely
+   from these semantic names.
+   ───────────────────────────────────────────────────────────────────────── */
+:root {
+  /* MailPoppy's assigned identity accent — poppyAccent("com.mailpoppy.desktop")
+     from @agentspoppy/extension-sdk. The same colour the host paints our
+     sidebar avatar and airlock header with. Pinned by the SDK's design.test.ts. */
+  --poppy-accent: #8fd0c6;
+}
+
+@theme {
+  /* Type — the kit's stacks: native system sans for UI, mono for data. */
+  --font-sans: var(--poppy-font);
+  --font-mono: var(--poppy-font-mono);
+
+  /* App background (Level 0) — sits beneath every surface */
+  --color-base: var(--poppy-surface-0);
+
+  /* Surfaces — the kit's warm-graphite elevation ramp */
+  --color-surface: var(--poppy-surface-1);
+  --color-surface-dim: var(--poppy-surface-1);
+  --color-surface-bright: var(--poppy-surface-3);
+  --color-surface-container-lowest: var(--poppy-surface-0);
+  --color-surface-container-low: var(--poppy-surface-1);
+  --color-surface-container: var(--poppy-surface-2);
+  --color-surface-container-high: var(--poppy-surface-2);
+  --color-surface-container-highest: var(--poppy-surface-3);
+  --color-surface-variant: var(--poppy-surface-3);
+  --color-background: var(--poppy-surface-0);
+
+  /* Foreground text — ivory over graphite */
+  --color-on-surface: var(--poppy-text);
+  --color-on-surface-variant: var(--poppy-muted-2);
+  --color-on-background: var(--poppy-text);
+  --color-inverse-surface: var(--poppy-text);
+  --color-inverse-on-surface: var(--poppy-surface-2);
+
+  /* Lines / outlines */
+  --color-outline: var(--poppy-border-strong);
+  --color-outline-variant: var(--poppy-border);
+
+  /* Primary — THE assigned accent (actions, active nav, focus, links) */
+  --color-primary: var(--poppy-accent);
+  --color-on-primary: var(--poppy-on-accent);
+  --color-primary-container: color-mix(in srgb, var(--poppy-accent) 30%, var(--poppy-surface-1));
+  --color-on-primary-container: var(--poppy-text);
+  --color-inverse-primary: color-mix(in srgb, var(--poppy-accent) 60%, var(--poppy-surface-0));
+  --color-primary-fixed: var(--poppy-accent);
+  --color-primary-fixed-dim: color-mix(in srgb, var(--poppy-accent) 75%, var(--poppy-surface-0));
+
+  /* Secondary — success, "connected", safe zones */
+  --color-secondary: var(--poppy-ok);
+  --color-on-secondary: var(--poppy-on-accent);
+  --color-secondary-container: color-mix(in srgb, var(--poppy-ok) 28%, var(--poppy-surface-1));
+  --color-on-secondary-container: var(--poppy-text);
+
+  /* Tertiary / error — destructive, danger zone, errors */
+  --color-tertiary: var(--poppy-danger);
+  --color-on-tertiary: var(--poppy-on-accent);
+  --color-tertiary-container: color-mix(in srgb, var(--poppy-danger) 30%, var(--poppy-surface-1));
+  --color-on-tertiary-container: var(--poppy-text);
+  --color-error: var(--poppy-danger);
+  --color-on-error: var(--poppy-on-accent);
+  --color-error-container: color-mix(in srgb, var(--poppy-danger) 25%, var(--poppy-surface-1));
+  --color-on-error-container: color-mix(in srgb, var(--poppy-danger) 45%, var(--poppy-text));
+
+  /* Warning — cautions, quota nearly full, sandbox notices */
+  --color-warn: var(--poppy-warn);
+  --color-warn-bright: color-mix(in srgb, var(--poppy-warn) 55%, var(--poppy-text));
+
+  /* ── Contract exceptions (DESIGN.md) — the only literals outside the kit ── */
+  /* Brand mark ONLY (the Logo wordmark) — never UI chrome. */
+  --color-poppy: #f4402e;
+  --color-poppy-dim: #d63420;
+  /* Foreign-content island: HTML email bodies + PDF pages render on white for
+     fidelity (they're authored for it). Used only by those islands. */
+  --color-paper: #ffffff;
+  --color-on-paper: #24211c;
+
+  /* Layout rhythm (from the design spec) */
+  --spacing-sidebar-width: 17.5rem; /* 280px */
+  --spacing-gutter: 1.5rem; /* 24px */
+  --spacing-margin-page: 2.5rem; /* 40px */
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    font-family: var(--font-sans);
+    color: var(--color-on-surface);
+    background-color: var(--color-base);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  /* Custom scrollbars — graphite, from the kit tokens */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: color-mix(in srgb, var(--poppy-surface-1) 50%, transparent);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--poppy-border-strong) 55%, transparent);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--poppy-border-strong) 85%, transparent);
+  }
+}
