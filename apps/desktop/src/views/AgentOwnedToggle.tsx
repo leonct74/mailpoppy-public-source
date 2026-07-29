@@ -64,8 +64,8 @@ export function AgentOwnedToggle({
     <div className="mt-2">
       {on ? (
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">🤖 Agent-owned</span>
-          <span className="text-on-surface-variant">incoming mail is handed to your CrewPoppy agents.</span>
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 font-medium text-primary">🤖 Assigned to an AI agent</span>
+          <span className="text-on-surface-variant">incoming mail goes to your CrewPoppy agent.</span>
           <button onClick={() => void apply(false)} disabled={busy} className={linkBtn}>
             {busy ? "Turning off…" : "Turn off"}
           </button>
@@ -78,23 +78,28 @@ export function AgentOwnedToggle({
           }}
           className={linkBtn}
         >
-          Hand incoming mail to CrewPoppy agents…
+          Assign this mailbox to an AI agent…
         </button>
       ) : (
         <div className="max-w-xl rounded-lg border border-warn/40 bg-warn/5 p-3">
           <div className="text-sm leading-relaxed text-on-surface-variant">
-            Mail arriving for <b className="text-on-surface">{email}</b> will start your CrewPoppy agents (in your own
-            AWS account) — so you can email this address an instruction from anywhere.{" "}
+            {/* Founder note (2026-07-29): say the prerequisite FIRST. Without it, a user
+                who never installed CrewPoppy could flip this on expecting something to
+                happen, and nothing would — a switch wired to nothing. */}
+            <b className="text-on-surface">This needs CrewPoppy</b> — the AgentsPoppy app that runs AI agents in your
+            own AWS account. If CrewPoppy isn&apos;t installed and set up, this switch does nothing: mail just delivers
+            normally. With CrewPoppy, mail arriving for <b className="text-on-surface">{email}</b> starts the agent that
+            owns this address — so you can email it an instruction from anywhere.{" "}
             <b className="text-on-surface">
-              An agent-owned mailbox is NOT private the way human mailboxes are — its incoming mail is handed to an AI
-              agent in plain text.
+              An agent mailbox is NOT private the way human mailboxes are — its incoming mail is handed to an AI agent
+              in plain text.
             </b>{" "}
-            Your human mailboxes are unchanged. Only mail that passes authentication and comes from the agent&apos;s
-            configured owner can start a run; if CrewPoppy isn&apos;t installed, mail simply delivers normally.
+            Your human mailboxes are unchanged, and only mail that passes authentication and comes from your own
+            address can start a run.
           </div>
           <div className="mt-2.5 flex items-center gap-2">
             <Button size="sm" onClick={() => void apply(true)} disabled={busy}>
-              {busy ? "Enabling…" : "Enable agent hand-off"}
+              {busy ? "Assigning…" : "Assign to my AI agent"}
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setConfirming(false)} disabled={busy}>
               Cancel

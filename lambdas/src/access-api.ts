@@ -32,6 +32,7 @@ import {
   messageSk,
   folderPrefix,
   normalizeAddress,
+  resolveSenderAddress,
   attachmentS3Key,
   resolveContentType,
   buildMimeMessage,
@@ -459,10 +460,25 @@ async function sendMessage(owned: string[], body: SendBody): Promise<APIGatewayP
     return json(400, { error: "at least one recipient required" });
   }
 
-  // The From address must be one the caller owns — fall back to the primary.
+  // The From address must be one the caller owns. A requested From the session
+  // does NOT own is REJECTED — never silently replaced with another identity —
+  // so a client whose session got crossed with a different mailbox can't send
+  // mail misattributed to that mailbox (field bug 2026-07-29: a compose "as" one
+  // account went out as another). Only a request with NO from at all falls back
+  // to the session's primary address (older clients don't send from). Decision
+  // logic lives in core (`resolveSenderAddress`), unit-tested.
   const requested = normalizeAddress(body.from);
-  const from = requested && owned.includes(requested) ? requested : owned[0];
-  if (!from) return json(403, { error: "no sending identity" });
+  const sender = resolveSenderAddress(requested || undefined, owned);
+  if (!sender.ok) {
+    if (sender.reason === "not-owned") {
+      console.warn(`send: rejected From mismatch — requested ${requested}, session owns [${owned.join(", ")}]`);
+      return json(403, {
+        error: `this sign-in can't send as ${requested} — remove and re-add that mailbox, then try again`,
+      });
+    }
+    return json(403, { error: "no sending identity" });
+  }
+  const from = sender.from;
 
   // SES delivery destination. Cc is also rendered as a header (visible); Bcc is
   // delivery-only and never written into the message headers, so To/Cc recipients

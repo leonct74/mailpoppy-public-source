@@ -94,6 +94,11 @@ export interface PresignAttachmentResult {
   key: string;
 }
 export interface SendInput {
+  /** The mailbox to send as. MUST be an address the signed-in session owns — the
+   *  server REJECTS (403) a mismatch rather than silently substituting another
+   *  identity, so a client with crossed wires can never misattribute mail. Always
+   *  set this; omitting it falls back to the session's primary address. */
+  from?: string;
   to: string[];
   /** Visible carbon-copy recipients. */
   cc?: string[];

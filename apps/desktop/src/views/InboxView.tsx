@@ -832,7 +832,11 @@ export function InboxView({
           init={composeInit}
           onClose={() => setComposeInit(null)}
           onSend={async (input) => {
-            await mail.send(input);
+            // State the sender explicitly (when known): the server rejects a `from`
+            // the session doesn't own instead of silently substituting another
+            // identity — so mail can never go out misattributed to a different
+            // mailbox on this install.
+            await mail.send(mailboxEmail ? { ...input, from: mailboxEmail } : input);
             setComposeInit(null);
             setFolder("sent");
             await refresh("sent");

@@ -109,6 +109,7 @@ import {
   waitUntilStackDeleteComplete,
   type Capability,
 } from "@aws-sdk/client-cloudformation";
+import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import { templateJson, lambdaZipBase64, lambdaCodeKey, updateManifest } from "./generated/backend-bundle";
 import {
   CognitoIdentityProviderClient,
@@ -151,6 +152,7 @@ function clients(ctx: AwsContext) {
     s3: new S3Client(base),
     cloudformation: new CloudFormationClient(base),
     cognito: new CognitoIdentityProviderClient(base),
+    lambda: new LambdaClient(base),
     dynamodb: new DynamoDBClient(base),
   };
 }
@@ -1604,6 +1606,23 @@ export async function setAgentOwned(
     );
   } else {
     await dynamodb.send(new DeleteItemCommand({ TableName: settingsTable, Key }));
+  }
+
+  // Tell CrewPoppy (kind:"mailbox") so its agent editor can offer this address in a
+  // SELECT instead of a free-text field. Best-effort by design: CrewPoppy absent or
+  // torn down must never make the toggle fail — the flag above is the truth, and
+  // CrewPoppy also self-heals its registry from the first arriving mail.
+  try {
+    const { lambda } = clients(ctx);
+    await lambda.send(
+      new InvokeCommand({
+        FunctionName: "CrewPoppyRunner",
+        InvocationType: "Event",
+        Payload: Buffer.from(JSON.stringify({ kind: "mailbox", email, agentOwned: args.agentOwned })),
+      }),
+    );
+  } catch (e) {
+    console.log("[mailpoppy] CrewPoppy not notified (absent or not permitted) — fine:", (e as Error).name);
   }
   return { ok: true, email, agentOwned: args.agentOwned };
 }

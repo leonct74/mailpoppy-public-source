@@ -12,6 +12,7 @@ import {
   addressMatchesList,
   isKnownMailbox,
   classifyDelivery,
+  resolveSenderAddress,
 } from "./mailbox";
 import { DEFAULT_POLICY, type DeploymentPolicy, type AuthVerdicts } from "./types";
 
@@ -206,5 +207,38 @@ describe("classifyDelivery", () => {
       folder: "inbox",
       reason: "auth-fail",
     });
+  });
+});
+
+describe("resolveSenderAddress", () => {
+  const owned = ["marco@agentspoppy.com", "extra@agentspoppy.com"];
+
+  it("sends as the requested address when the session owns it", () => {
+    expect(resolveSenderAddress("marco@agentspoppy.com", owned)).toEqual({
+      ok: true,
+      from: "marco@agentspoppy.com",
+    });
+    expect(resolveSenderAddress("extra@agentspoppy.com", owned)).toEqual({
+      ok: true,
+      from: "extra@agentspoppy.com",
+    });
+  });
+
+  it("REJECTS a requested address the session does not own — never substitutes", () => {
+    // The wrong-From field bug (2026-07-29): the old fallback silently sent as
+    // owned[0] when the request named an unowned address. That must be a hard error.
+    expect(resolveSenderAddress("sales@ollydigital.com", owned)).toEqual({
+      ok: false,
+      reason: "not-owned",
+    });
+  });
+
+  it("falls back to the primary address only when NO sender was requested", () => {
+    expect(resolveSenderAddress(undefined, owned)).toEqual({ ok: true, from: "marco@agentspoppy.com" });
+    expect(resolveSenderAddress("", owned)).toEqual({ ok: true, from: "marco@agentspoppy.com" });
+  });
+
+  it("reports no-identity when the session owns nothing", () => {
+    expect(resolveSenderAddress(undefined, [])).toEqual({ ok: false, reason: "no-identity" });
   });
 });

@@ -177,6 +177,34 @@ export function isKnownMailbox(address: string, known: Iterable<string>): boolea
   return false;
 }
 
+// ---- Outbound sender resolution ---------------------------------------------
+
+export type SenderResolution =
+  /** Send as `from`. */
+  | { ok: true; from: string }
+  /** The requested sender isn't owned by this session — REJECT the send. */
+  | { ok: false; reason: "not-owned" }
+  /** The session owns no address at all — nothing to send as. */
+  | { ok: false; reason: "no-identity" };
+
+/**
+ * Which address a send may go out as, given the sender the client requested and
+ * the addresses the session's verified JWT owns (both normalized). Security-
+ * critical: a requested sender the session does NOT own is REJECTED — never
+ * silently replaced with another identity. (The old silent fallback let a client
+ * with a crossed mailbox session send mail misattributed to a different account —
+ * field bug 2026-07-29.) Only a request naming NO sender falls back to the
+ * session's primary address, for older clients that predate explicit `from`.
+ */
+export function resolveSenderAddress(
+  requested: string | undefined,
+  owned: readonly string[],
+): SenderResolution {
+  if (requested && !owned.includes(requested)) return { ok: false, reason: "not-owned" };
+  const from = requested || owned[0];
+  return from ? { ok: true, from } : { ok: false, reason: "no-identity" };
+}
+
 // ---- Delivery decision (verdict + policy → folder) --------------------------
 
 export interface DeliveryDecision {

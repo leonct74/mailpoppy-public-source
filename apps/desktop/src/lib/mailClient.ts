@@ -22,6 +22,9 @@ export interface SendAttachment {
   contentBase64: string;
 }
 export interface SendInput {
+  /** The mailbox to send as — must be an address the signed-in session owns; the
+   *  server rejects a mismatch instead of silently substituting another identity. */
+  from?: string;
   to: string[];
   subject: string;
   html?: string;
