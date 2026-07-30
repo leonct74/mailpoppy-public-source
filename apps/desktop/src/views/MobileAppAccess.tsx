@@ -8,6 +8,8 @@ import {
   checkHubDomain,
   mobileAppsLive,
   notifyMobileInterest,
+  APP_STORE_URL,
+  PLAY_STORE_URL,
   type DeploymentForHub,
   type HubDomainStatus,
 } from "../lib/hubAccount";
@@ -201,15 +203,19 @@ export function MobileAppAccess({
             <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-secondary" />
             <span>
               <b className="text-on-surface">On for {domain}.</b> Everyone with a mailbox here signs in with the{" "}
-              <b className="text-on-surface">MailPoppy</b> app on iPhone, Android and the web — coming soon to the App
-              Store &amp; Google Play.
+              <b className="text-on-surface">MailPoppy</b> app on iPhone, Android and the web. The apps are free —
+              share these links with them.
             </span>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button onClick={() => void openExternal(APP_STORE_URL)}>App Store</Button>
+            <Button onClick={() => void openExternal(PLAY_STORE_URL)}>Google Play</Button>
           </div>
           <button
             type="button"
             onClick={() => void manage()}
             disabled={busy}
-            className="mt-2 text-sm text-on-surface-variant underline hover:text-on-surface disabled:opacity-60"
+            className="mt-3 text-sm text-on-surface-variant underline hover:text-on-surface disabled:opacity-60"
           >
             {busy ? "Opening…" : "Manage billing"}
           </button>
@@ -282,7 +288,8 @@ export function MobileAppAccess({
         <>
           <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">
             Activate the MailPoppy mobile app for <b className="text-on-surface">{domain}</b>, so the people with
-            mailboxes here can sign in from anywhere. You pay once for this domain, through AgentsPoppy.
+            mailboxes here can sign in from anywhere. The apps are free to download; this is one subscription for the
+            domain, through AgentsPoppy, covering every mailbox on it.
           </p>
           <Button className="mt-3" disabled={busy} onClick={() => void buy()}>
             {busy ? "Opening checkout…" : "Set up mobile access →"}

@@ -14,7 +14,9 @@ standalone `.app`/`.dmg` release and no bundled Node (agentspoppy `docs/RUNTIMES
 
 ```
 bump version → build:bundle + build → package as com.mailpoppy.desktop-<v>-any.zip
-   → git commit + tag v<v> + push → gh release create (attach the zip)
+   → git commit + tag v<v> + push → sync the PUBLIC MIRROR
+   → gh release create ON THE MIRROR (attach the zip) — this repo is private, so an
+     asset published here is a 404 for every user
    → ⚠ UPDATE THE CATALOG: hand version + package url + sha256 to the catalog
      maintainer (curated listing — the maintainer runbook lives outside public repos)
      → the live catalog redeploys
@@ -110,25 +112,40 @@ git tag v<v>
 git push origin v<v>
 ```
 
-### 5. Create the GitHub release with the asset
+### 4b. Sync the public mirror — the release is published there, so sync it first
+```bash
+scripts/export-public.sh <staging-dir> https://github.com/leonct74/mailpoppy-public-source.git
+```
+So the published source matches the package users are about to install.
+
+### 5. Create the GitHub release with the asset — on the PUBLIC MIRROR
+
+> 🚨 **The release goes on `leonct74/mailpoppy-public-source`, NOT this monorepo.** This repo is
+> **private**, and GitHub release assets on a private repo need auth — so a catalog entry pointing
+> here 404s for every user and the poppy becomes uninstallable. That is exactly what happened on
+> 2026-07-30: the monorepo was set private (it should never have been public) and MailPoppy's
+> install/update path broke silently until the assets were re-published on the mirror.
+> **Always `curl -sIL` the finished download URL with no credentials before touching the catalog.**
+
 ```bash
 gh release create v<v> \
   apps/desktop/release/com.mailpoppy.desktop-<v>-any.zip \
-  --repo leonct74/mailpoppy \
+  --repo leonct74/mailpoppy-public-source \
   --title "MailPoppy v<v>" \
   --notes "<what changed>
 
-Audit: https://github.com/leonct74/mailpoppy/compare/v<prev>...v<v>
 Package sha256: <sha from step 3>"
 ```
 
 ### 6. Verify it published
 ```bash
 curl -sS -H "Accept: application/vnd.github+json" \
-  https://api.github.com/repos/leonct74/mailpoppy/releases/tags/v<v> \
+  https://api.github.com/repos/leonct74/mailpoppy-public-source/releases/tags/v<v> \
   | grep -Ei '"tag_name"|"name"|"size"|"browser_download_url"'
 ```
-Confirm the asset is attached and its size looks right. **This does NOT yet make AgentsPoppy show
+Confirm the asset is attached and its size looks right, then confirm an **unauthenticated** fetch
+of the download URL returns 200 (`curl -sIL -o /dev/null -w '%{http_code}\n' <url>`) — a private-repo
+asset 404s for users while looking fine to you. **This does NOT yet make AgentsPoppy show
 the update — do step 7.**
 
 ### 7. Update the AgentsPoppy catalog (the step that actually surfaces the update)

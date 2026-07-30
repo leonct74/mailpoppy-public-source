@@ -9,6 +9,12 @@ const HUB_URL = (
   "https://mailpoppy.com"
 ).replace(/\/$/, "");
 
+// The published mobile clients (live since 2026-07-30). Both are FREE downloads — what's paid is
+// the per-domain plan. The admin needs these to hand to the people with mailboxes, so the panel
+// shows them the moment a domain is on.
+export const APP_STORE_URL = "https://apps.apple.com/app/id6781572431";
+export const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.mailpoppy.app";
+
 export interface DeploymentForHub {
   region: string;
   userPoolId: string;

@@ -20,7 +20,12 @@ vi.mock("../lib/hubAccount", () => ({
   checkHubDomain: (d: string) => checkHubDomain(d),
   mobileAppsLive: () => mobileAppsLive(),
   notifyMobileInterest: (e: string, d: string) => notifyMobileInterest(e, d),
+  APP_STORE_URL: "https://apps.apple.com/app/id6781572431",
+  PLAY_STORE_URL: "https://play.google.com/store/apps/details?id=com.mailpoppy.app",
 }));
+
+const openExternal = vi.fn();
+vi.mock("../lib/openExternal", () => ({ openExternal: (u: string) => openExternal(u) }));
 
 const deployment = { region: "eu-west-1", userPoolId: "p", clientId: "c", apiBaseUrl: "https://api" };
 
@@ -66,6 +71,26 @@ describe("MobileAppAccess — coming-soon gate", () => {
 
     expect(await screen.findByRole("button", { name: /Set up mobile access/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Notify me/i })).toBeNull();
+  });
+
+  // The regression that shipped on launch day: an admin who had ALREADY PAID was told the apps
+  // were "coming soon to the App Store & Google Play" — the one screen that must hand them the
+  // links to give their mailbox users.
+  it("when the domain is on, hands the admin the real store links", async () => {
+    mobileAppsLive.mockResolvedValue(true);
+    checkHubDomain.mockResolvedValue("current" as HubDomainStatus);
+    render(<MobileAppAccess domain="ollydigital.com" deployment={deployment} />);
+
+    expect(await screen.findByText(/On for ollydigital\.com/i)).toBeInTheDocument();
+    expect(screen.queryByText(/coming soon/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /App Store/i }));
+    expect(openExternal).toHaveBeenCalledWith("https://apps.apple.com/app/id6781572431");
+
+    fireEvent.click(screen.getByRole("button", { name: /Google Play/i }));
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://play.google.com/store/apps/details?id=com.mailpoppy.app",
+    );
   });
 
   it("defaults to coming-soon (no buy button) if the live check fails", async () => {
