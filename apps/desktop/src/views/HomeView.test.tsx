@@ -53,9 +53,9 @@ describe("HomeView", () => {
     localStorage.setItem(
       "mailpoppy.deployment",
       JSON.stringify({
-        apiBaseUrl: "https://h7poaooahc.execute-api.eu-west-1.amazonaws.com",
-        userPoolId: "eu-west-1_cj7e4w3sZ",
-        clientId: "63cs9fep5jbsk7rcb98rs8eln4",
+        apiBaseUrl: "https://example123.execute-api.eu-west-1.amazonaws.com",
+        userPoolId: "eu-west-1_EXAMPLE01",
+        clientId: "exampleclientid0000000000",
         region: "eu-west-1",
       }),
     );
@@ -71,7 +71,7 @@ describe("HomeView", () => {
     expect(await screen.findByText("Not activated for apps")).toBeInTheDocument();
     // …and the healthy one reads active — so the warning is meaningful, not blanket.
     expect(await screen.findByText("Apps active")).toBeInTheDocument();
-    expect(checkHub).toHaveBeenCalledWith("boxord.com", expect.objectContaining({ userPoolId: "eu-west-1_cj7e4w3sZ" }));
+    expect(checkHub).toHaveBeenCalledWith("boxord.com", expect.objectContaining({ userPoolId: "eu-west-1_EXAMPLE01" }));
 
     // …and an always-on, account-level banner names the affected domain so the drift
     // (e.g. after a reinstall/rebuild) can never hide.
@@ -88,9 +88,9 @@ describe("HomeView", () => {
     localStorage.setItem(
       "mailpoppy.deployment",
       JSON.stringify({
-        apiBaseUrl: "https://h7poaooahc.execute-api.eu-west-1.amazonaws.com",
-        userPoolId: "eu-west-1_cj7e4w3sZ",
-        clientId: "63cs9fep5jbsk7rcb98rs8eln4",
+        apiBaseUrl: "https://example123.execute-api.eu-west-1.amazonaws.com",
+        userPoolId: "eu-west-1_EXAMPLE01",
+        clientId: "exampleclientid0000000000",
         region: "eu-west-1",
       }),
     );
