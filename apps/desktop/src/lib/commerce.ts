@@ -123,17 +123,82 @@ export async function openBillingPortal(): Promise<CheckoutResult> {
 /** Is this domain currently purchased in AgentsPoppy? (target-scoped, no buyer needed.) Best-effort:
  *  returns false on any error. Mostly the Hub's resolve gate is authoritative — this is for showing
  *  status in the desktop without waiting on the Hub mirror. */
-export async function isDomainPurchased(domain: string): Promise<boolean> {
+/** A domain's standing in the AgentsPoppy commerce plane. `status` mirrors AgentsPoppy's
+ *  EntitlementStatus ("active" | "trialing" | "past_due" | "canceled" | "none"); for a trialing
+ *  subscription `currentPeriodEnd` is when the free trial runs out. */
+export interface DomainStanding {
+  entitled: boolean;
+  status: string;
+  kind: string | null;
+  /** Epoch ms the current period (or trial) ends; null when unknown. */
+  currentPeriodEnd: number | null;
+}
+
+const NOT_ENTITLED: DomainStanding = { entitled: false, status: "none", kind: null, currentPeriodEnd: null };
+
+export async function getDomainStanding(domain: string): Promise<DomainStanding> {
   try {
     const res = await fetch(
       `${AGENTSPOPPY_BASE}/api/entitlement?poppyId=${encodeURIComponent(POPPY_ID)}` +
         `&productId=${encodeURIComponent(DOMAIN_ACCESS_PRODUCT)}&target=${encodeURIComponent(domain)}`,
       { cache: "no-store" },
     );
-    if (!res.ok) return false;
-    const j = (await res.json()) as { entitled?: boolean };
-    return j.entitled === true;
+    if (!res.ok) return NOT_ENTITLED;
+    const j = (await res.json()) as Partial<DomainStanding>;
+    return {
+      entitled: j.entitled === true,
+      status: typeof j.status === "string" ? j.status : "none",
+      kind: typeof j.kind === "string" ? j.kind : null,
+      // Older AgentsPoppy builds don't send this — absent just means "no countdown", never a lockout.
+      currentPeriodEnd: typeof j.currentPeriodEnd === "number" ? j.currentPeriodEnd : null,
+    };
   } catch {
-    return false;
+    return NOT_ENTITLED;
   }
+}
+
+export async function isDomainPurchased(domain: string): Promise<boolean> {
+  return (await getDomainStanding(domain)).entitled;
+}
+
+/**
+ * How many free-trial days the `domain-access` product currently offers, straight from the
+ * AgentsPoppy listing — so changing the trial in the AgentsPoppy admin changes what the app offers,
+ * with no MailPoppy release. Returns null when there's no trial configured or the listing can't be
+ * read, which simply falls back to the plain "Set up mobile access" wording.
+ */
+export async function getTrialDays(): Promise<number | null> {
+  try {
+    const res = await fetch(`${AGENTSPOPPY_BASE}/api/products/${encodeURIComponent(POPPY_ID)}`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      products?: { productId?: string; pricing?: { trialDays?: unknown } }[];
+    };
+    const product = j.products?.find((p) => p.productId === DOMAIN_ACCESS_PRODUCT);
+    const days = product?.pricing?.trialDays;
+    return typeof days === "number" && days > 0 ? Math.floor(days) : null;
+  } catch {
+    return null;
+  }
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Whole days left before `endMs`, rounded UP so the last partial day still reads "1 day left"
+ * rather than "0". Returns null when there's no date to count from, and never goes below 0.
+ * PURE — unit-tested; the panel just renders what this returns.
+ */
+export function daysLeft(endMs: number | null | undefined, nowMs: number): number | null {
+  if (typeof endMs !== "number" || !Number.isFinite(endMs)) return null;
+  return Math.max(0, Math.ceil((endMs - nowMs) / DAY_MS));
+}
+
+/** Human phrasing for a trial countdown: "1 day left" / "5 days left" / "ends today". */
+export function trialCountdownLabel(days: number | null): string | null {
+  if (days == null) return null;
+  if (days <= 0) return "ends today";
+  return `${days} ${days === 1 ? "day" : "days"} left`;
 }

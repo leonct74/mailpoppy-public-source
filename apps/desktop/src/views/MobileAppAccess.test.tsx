@@ -4,13 +4,21 @@ import { MobileAppAccess } from "./MobileAppAccess";
 import type { HubDomainStatus } from "../lib/hubAccount";
 
 // Mock the two lib modules the panel talks to.
-const isDomainPurchased = vi.fn();
+const getDomainStanding = vi.fn();
+const getTrialDays = vi.fn();
 const startDomainCheckout = vi.fn();
-vi.mock("../lib/commerce", () => ({
-  isDomainPurchased: (d: string) => isDomainPurchased(d),
+vi.mock("../lib/commerce", async (orig) => ({
+  // Keep the REAL pure helpers (daysLeft/trialCountdownLabel) so the countdown the test asserts is
+  // the one users see, not a stub.
+  ...(await orig<typeof import("../lib/commerce")>()),
+  getDomainStanding: (d: string) => getDomainStanding(d),
+  getTrialDays: () => getTrialDays(),
   startDomainCheckout: (d: string) => startDomainCheckout(d),
   openBillingPortal: vi.fn(async () => ({ ok: true, url: "", opened: true })),
 }));
+
+const ENTITLED = { entitled: true, status: "active", kind: "subscription", currentPeriodEnd: null };
+const NOT_ENTITLED = { entitled: false, status: "none", kind: null, currentPeriodEnd: null };
 
 const mobileAppsLive = vi.fn();
 const notifyMobileInterest = vi.fn();
@@ -30,7 +38,8 @@ vi.mock("../lib/openExternal", () => ({ openExternal: (u: string) => openExterna
 const deployment = { region: "eu-west-1", userPoolId: "p", clientId: "c", apiBaseUrl: "https://api" };
 
 beforeEach(() => {
-  isDomainPurchased.mockReset().mockResolvedValue(false);
+  getDomainStanding.mockReset().mockResolvedValue(NOT_ENTITLED);
+  getTrialDays.mockReset().mockResolvedValue(null);
   startDomainCheckout.mockReset().mockResolvedValue({ ok: true, url: "https://pay", opened: true });
   mobileAppsLive.mockReset().mockResolvedValue(false);
   notifyMobileInterest.mockReset().mockResolvedValue(true);
@@ -78,6 +87,7 @@ describe("MobileAppAccess — coming-soon gate", () => {
   // links to give their mailbox users.
   it("when the domain is on, hands the admin the real store links", async () => {
     mobileAppsLive.mockResolvedValue(true);
+    getDomainStanding.mockResolvedValue(ENTITLED);
     checkHubDomain.mockResolvedValue("current" as HubDomainStatus);
     render(<MobileAppAccess domain="ollydigital.com" deployment={deployment} />);
 
@@ -91,6 +101,50 @@ describe("MobileAppAccess — coming-soon gate", () => {
     expect(openExternal).toHaveBeenCalledWith(
       "https://play.google.com/store/apps/details?id=com.mailpoppy.app",
     );
+  });
+
+
+  // The free trial is configured in the AgentsPoppy admin, not in MailPoppy — these two tests pin
+  // that BOTH ends of it reach the user: the offer before buying, and the countdown after.
+  it("offers the trial on the purchase button, with the length the admin configured", async () => {
+    mobileAppsLive.mockResolvedValue(true);
+    getTrialDays.mockResolvedValue(7);
+    render(<MobileAppAccess domain="ollydigital.com" deployment={deployment} />);
+
+    expect(await screen.findByRole("button", { name: /Start 7-day free trial/i })).toBeInTheDocument();
+    expect(screen.getByText(/Free for 7 days, then the subscription starts/i)).toBeInTheDocument();
+  });
+
+  it("counts the trial down from the entitlement's period end while it runs", async () => {
+    const inFiveDays = Date.now() + 5 * 86_400_000 + 3_600_000; // 5 days + 1h → "6 days left"
+    mobileAppsLive.mockResolvedValue(true);
+    getDomainStanding.mockResolvedValue({
+      entitled: true,
+      status: "trialing",
+      kind: "subscription",
+      currentPeriodEnd: inFiveDays,
+    });
+    checkHubDomain.mockResolvedValue("current" as HubDomainStatus);
+    render(<MobileAppAccess domain="ollydigital.com" deployment={deployment} />);
+
+    expect(await screen.findByText(/Free trial — 6 days left/i)).toBeInTheDocument();
+    // Access is real during the trial: the store links are there, not a paywall.
+    expect(screen.getByRole("button", { name: /App Store/i })).toBeInTheDocument();
+  });
+
+  it("shows no countdown when the API omits the period end (older AgentsPoppy)", async () => {
+    mobileAppsLive.mockResolvedValue(true);
+    getDomainStanding.mockResolvedValue({
+      entitled: true,
+      status: "trialing",
+      kind: "subscription",
+      currentPeriodEnd: null,
+    });
+    checkHubDomain.mockResolvedValue("current" as HubDomainStatus);
+    render(<MobileAppAccess domain="ollydigital.com" deployment={deployment} />);
+
+    await screen.findByText(/On for ollydigital\.com/i);
+    expect(screen.queryByText(/Free trial/i)).toBeNull(); // degrade quietly, never a blank countdown
   });
 
   it("defaults to coming-soon (no buy button) if the live check fails", async () => {

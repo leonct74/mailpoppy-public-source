@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Smartphone, AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
+import { Smartphone, AlertTriangle, CheckCircle2, RefreshCw, Sparkles } from "lucide-react";
 import { Card, Button } from "../ui";
 import { openExternal } from "../lib/openExternal";
-import { startDomainCheckout, openBillingPortal, isDomainPurchased } from "../lib/commerce";
+import appStoreBadge from "../assets/app-store-badge.svg";
+import googlePlayBadge from "../assets/google-play-badge.png";
+import {
+  startDomainCheckout,
+  openBillingPortal,
+  getDomainStanding,
+  getTrialDays,
+  daysLeft,
+  trialCountdownLabel,
+  type DomainStanding,
+} from "../lib/commerce";
 import {
   activationUrl,
   checkHubDomain,
@@ -13,6 +23,39 @@ import {
   type DeploymentForHub,
   type HubDomainStatus,
 } from "../lib/hubAccount";
+
+/**
+ * The two store buttons, as the OFFICIAL badge artwork rather than text buttons — a button reading
+ * just "App Store" doesn't read as "this downloads the mobile app", and the badges are the one mark
+ * everyone recognises instantly. Both are the vendors' own files (Apple's badge API, Google's
+ * published badge), used unmodified as their brand guidelines require — never redraw them, and don't
+ * recolour or squash them (`h-10 w-auto` keeps each at its native aspect).
+ *
+ * Google's badge carries ~10% built-in padding that Apple's doesn't, so it renders slightly larger
+ * to make the two lozenges optically match.
+ */
+function StoreBadges() {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => void openExternal(APP_STORE_URL)}
+        className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        aria-label="Download MailPoppy on the App Store"
+      >
+        <img src={appStoreBadge} alt="Download on the App Store" className="h-10 w-auto" />
+      </button>
+      <button
+        type="button"
+        onClick={() => void openExternal(PLAY_STORE_URL)}
+        className="rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        aria-label="Get MailPoppy on Google Play"
+      >
+        <img src={googlePlayBadge} alt="Get it on Google Play" className="h-[3.4rem] w-auto" />
+      </button>
+    </div>
+  );
+}
 
 // Per-domain "mobile app" panel. Access is bought through AgentsPoppy's in-app checkout (the
 // `domain-access` product, scoped to this domain). This panel reflects TWO facts:
@@ -52,46 +95,59 @@ export function MobileAppAccess({
   deployment: DeploymentForHub | null;
 }) {
   const [status, setStatus] = useState<HubDomainStatus | "loading">("loading");
-  const [purchased, setPurchased] = useState(false);
+  const [standing, setStanding] = useState<DomainStanding | null>(null);
+  const purchased = standing?.entitled ?? false;
   // Are the native apps downloadable yet? Until they are, the unpurchased state shows "coming soon +
   // notify me" instead of a purchase button — we never sell a download that doesn't exist. Defaults
   // to false (coming soon) so a failed/slow check can't reveal a buy button prematurely.
   const [appsLive, setAppsLive] = useState(false);
+  // Free-trial length, read from the AgentsPoppy listing so the admin can change it there without a
+  // MailPoppy release. null = no trial configured → the plain wording.
+  const [trialDays, setTrialDays] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null); // shown if the OS hand-off failed
+
+  // A trial reads straight off the entitlement: status "trialing", with currentPeriodEnd as the
+  // trial end. Null (older AgentsPoppy, or not trialing) simply hides the banner — never blocks.
+  const trialLabel =
+    standing?.status === "trialing" ? trialCountdownLabel(daysLeft(standing.currentPeriodEnd, Date.now())) : null;
 
   // Read the three truths: the AgentsPoppy purchase state (target = domain), the Hub's registration
   // status for the live backend, and whether the mobile apps are live yet. All best-effort — a
   // failure leaves the safe default.
   const refresh = useCallback(async () => {
-    const [p, s, l] = await Promise.all([
-      isDomainPurchased(domain).catch(() => false),
+    const [p, s, l, t] = await Promise.all([
+      getDomainStanding(domain).catch((): DomainStanding | null => null),
       deployment
         ? checkHubDomain(domain, deployment).catch((): HubDomainStatus => "unknown")
         : Promise.resolve<HubDomainStatus>("unknown"),
       mobileAppsLive().catch(() => false),
+      getTrialDays().catch((): number | null => null),
     ]);
-    setPurchased(p);
+    setStanding(p);
     setStatus(s);
     setAppsLive(l);
+    setTrialDays(t);
   }, [domain, deployment]);
 
   useEffect(() => {
     let cancelled = false;
     setStatus("loading");
     void (async () => {
-      const [p, s, l] = await Promise.all([
-        isDomainPurchased(domain).catch(() => false),
+      const [p, s, l, t] = await Promise.all([
+        getDomainStanding(domain).catch((): DomainStanding | null => null),
         deployment
           ? checkHubDomain(domain, deployment).catch((): HubDomainStatus => "unknown")
           : Promise.resolve<HubDomainStatus>("unknown"),
         mobileAppsLive().catch(() => false),
+        getTrialDays().catch((): number | null => null),
       ]);
       if (!cancelled) {
-        setPurchased(p);
+        setStanding(p);
         setStatus(s);
         setAppsLive(l);
+        setTrialDays(t);
       }
     })();
     return () => {
@@ -207,10 +263,18 @@ export function MobileAppAccess({
               share these links with them.
             </span>
           </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Button onClick={() => void openExternal(APP_STORE_URL)}>App Store</Button>
-            <Button onClick={() => void openExternal(PLAY_STORE_URL)}>Google Play</Button>
-          </div>
+          {trialLabel && (
+            // Trialing: say so plainly and count down from the authoritative period end, so nobody is
+            // surprised when it converts. Not an alarm — the access is real and working.
+            <div className="mt-2 flex items-start gap-2 rounded-lg border border-primary/30 bg-primary/10 p-3 text-sm">
+              <Sparkles className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span className="text-on-surface-variant">
+                <b className="text-on-surface">Free trial — {trialLabel}.</b> Everything is switched on. When the
+                trial ends the subscription starts automatically; cancel any time under Manage billing.
+              </span>
+            </div>
+          )}
+          <StoreBadges />
           <button
             type="button"
             onClick={() => void manage()}
@@ -292,9 +356,18 @@ export function MobileAppAccess({
             domain, through AgentsPoppy, covering every mailbox on it.
           </p>
           <Button className="mt-3" disabled={busy} onClick={() => void buy()}>
-            {busy ? "Opening checkout…" : "Set up mobile access →"}
+            {busy
+              ? "Opening checkout…"
+              : trialDays
+                ? `Start ${trialDays}-day free trial →`
+                : "Set up mobile access →"}
           </Button>
-          <p className="mt-2 text-xs text-on-surface-variant">Updates here automatically when you come back.</p>
+          <p className="mt-2 text-xs text-on-surface-variant">
+            {trialDays
+              ? `Free for ${trialDays} days, then the subscription starts. Cancel any time. `
+              : ""}
+            Updates here automatically when you come back.
+          </p>
           {feedback}
         </>
       )}
