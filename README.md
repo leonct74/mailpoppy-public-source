@@ -8,7 +8,7 @@ all down in one click) at any time.
 ## Runs on AgentsPoppy
 
 MailPoppy is a **poppy** — an app whose backend lives in **your own AWS account**, installed and
-supervised by [AgentsPoppy](https://agentspoppy-web--agentspoppy.europe-west4.hosted.app), the
+supervised by [AgentsPoppy](https://agentspoppy.com), the
 local-first permission broker. The desktop app ships through AgentsPoppy's curated directory:
 one click installs it, and every update arrives explained, diffable, and verifiable before you
 choose to apply it. This repository exists so anyone (or anyone's AI agent) can read exactly
@@ -36,8 +36,8 @@ The full product is live: one-click backend deploy into your AWS account (SES + 
 DynamoDB + Cognito, no terminal needed), DNS/DKIM/DMARC provisioning, mailboxes with quotas,
 inbox/send with attachments, spam & allow/block policies, IMAP migration from your old
 provider, optional malware scanning, retention controls, full resource transparency ("what
-MailPoppy did to your account"), and one-click teardown. Mobile apps are in the App Store and
-Google Play.
+MailPoppy did to your account"), and one-click teardown. The iPhone and Android apps are
+submitted to the App Store and Google Play and awaiting review.
 
 ## Quickstart (developers)
 
@@ -50,9 +50,16 @@ npm run typecheck && npm run test             # verify
 
 To wrap the desktop frontend as a native **Tauri v2** app, see `apps/desktop/README.md`.
 
+## This repository is a mirror
+
+The public repository is a **read-only mirror**, exported from a private monorepo that also
+holds the vendor-side website and the mobile clients. Pull requests opened here can't be
+merged — the next export would overwrite them. Please send issues and questions to
+**support@mailpoppy.com**, and security reports as described in [SECURITY.md](./SECURITY.md).
+
 ## License
 
 MailPoppy is **source-available** under the
 [PolyForm Shield License 1.0.0](./LICENSE): read it, audit it, build it, and use it freely —
 but providing a product that competes with MailPoppy is not licensed. The MailPoppy name and
-brand are not licensed with the code.
+brand are not licensed with the code — see [TRADEMARK.md](./TRADEMARK.md).
