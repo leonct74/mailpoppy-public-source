@@ -15,18 +15,18 @@ standalone `.app`/`.dmg` release and no bundled Node (agentspoppy `docs/RUNTIMES
 ```
 bump version → build:bundle + build → package as com.mailpoppy.desktop-<v>-any.zip
    → git commit + tag v<v> + push → gh release create (attach the zip)
-   → ⚠ UPDATE THE CATALOG: bump the com.mailpoppy.desktop entry in
-     agentspoppy-web/public/directory/catalog.json (version + package url + sha256) → push
-     → Firebase App Hosting redeploys agentspoppy-web
+   → ⚠ UPDATE THE CATALOG: hand version + package url + sha256 to the catalog
+     maintainer (curated listing — the maintainer runbook lives outside public repos)
+     → the live catalog redeploys
    → AgentsPoppy polls the CATALOG (~60s) → detects the new version → user AUDITS it
      (the built-in "Verify with your AI agent" / REPRODUCE.md flow) → installs from AgentsPoppy
 ```
 
 MailPoppy (the desktop app) is a **poppy** installed/updated through **AgentsPoppy**. AgentsPoppy
-does **NOT** watch GitHub releases directly — it polls a **remote catalog**,
-`agentspoppy-web/public/directory/catalog.json`, served at
+does **NOT** watch GitHub releases directly — it polls a **remote catalog** at
 `https://agentspoppy-web--agentspoppy.europe-west4.hosted.app/directory/catalog.json`
-(the `DEFAULT_CATALOG_URL` in the AgentsPoppy broker). That catalog pins each poppy's current
+(the `DEFAULT_CATALOG_URL` in the AgentsPoppy broker; curated listings win over
+submissions). That catalog pins each poppy's current
 `version` + package `url` + `sha256`; AgentsPoppy compares it to the installed version to compute
 `updateAvailable`. **The GitHub release only *hosts the zip the catalog points at*.**
 
@@ -40,8 +40,7 @@ by hand; they audit and install inside AgentsPoppy.
 - Any machine with **Node 22+**. Since 0.1.11 the package is **platform-agnostic** (`any`) — it's
   pure JavaScript, so there is no per-OS build and no Rust/Xcode toolchain needed to cut a release.
 - Push access to `github.com/leonct74/mailpoppy` (HTTPS credential in the keychain is enough).
-- For the release step: **`gh` authenticated** (`gh auth status`) **or** a `GH_TOKEN`. If `gh` isn't
-  logged in but `git push` works, you can reuse the stored credential — see the gotcha below.
+- For the release step: **`gh` authenticated** (`gh auth status`) **or** a `GH_TOKEN`.
 
 ## Steps
 
@@ -133,30 +132,17 @@ Confirm the asset is attached and its size looks right. **This does NOT yet make
 the update — do step 7.**
 
 ### 7. Update the AgentsPoppy catalog (the step that actually surfaces the update)
-Edit `agentspoppy-web/public/directory/catalog.json` → the `com.mailpoppy.desktop` entry:
-- `version` → `<v>`
-- `packages.any.url` → the v`<v>` release download URL
-- `packages.any.sha256` → the sha256 from **step 3**
-- `minHost` → the lowest AgentsPoppy version that can run it (`0.3.0` since the node22 switch)
-- top-level `updatedAt` → today
+The catalog — not the GitHub release — is what AgentsPoppy reads; skipping this step means the
+update is invisible no matter how good the release is. MailPoppy is a curated listing, so this
+step is performed by the AgentsPoppy catalog maintainer (their runbook lives outside public
+repos). Hand over: the new version, the release download URL, and the package sha256 from
+step 3 — then wait for the maintainer's confirmation that the live catalog serves the new
+version before announcing.
 
-Then push — `agentspoppy-web` is on **Firebase App Hosting**, so a push to `main` auto-redeploys:
-```bash
-cd ../agentspoppy-web    # separate repo: github.com/leonct74/agentspoppy-web
-# validate before committing (same rules as src/lib/listingRules.ts):
-node -e "const p=require('./public/directory/catalog.json').poppies.find(x=>x.id==='com.mailpoppy.desktop'); const s=p.packages['any'].sha256; if(!/^[0-9a-f]{64}$/i.test(s))throw 'bad sha'; console.log('ok', p.version)"
-git add public/directory/catalog.json
-git commit -m "catalog: MailPoppy <prev> → <v>"
-git push origin main
-```
-Wait ~1–2 min for App Hosting to rebuild, then confirm the **live** catalog serves the new version:
-```bash
-curl -s https://agentspoppy-web--agentspoppy.europe-west4.hosted.app/directory/catalog.json \
-  | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).poppies.find(p=>p.id==='com.mailpoppy.desktop').version))"
-```
-AgentsPoppy re-polls the catalog roughly every 60s, so the update appears shortly after — the user
-audits it (backend code is reproducibly verifiable per REPRODUCE.md; the host binary is a separate
-trust root) and installs.
+Once the catalog is live, AgentsPoppy installs poll it within minutes; the user reviews the
+update (backend code is reproducibly verifiable per REPRODUCE.md; the host binary is a separate
+trust root) and applies it. The general two-flow release runbook (first listing vs. update) is
+`agentspoppy/docs/RELEASING-POPPY.md`.
 
 ## Gotchas (each of these has bitten us)
 
@@ -172,12 +158,8 @@ trust root) and installs.
 - **Stale backend bundle.** `npm run build:bundle` regenerates
   the embedded CFN template + Lambda zip. If you changed `lambdas/`, `infra/`, or core code a Lambda
   imports, that regeneration is what carries the fix — see the [CLAUDE.md](../../CLAUDE.md) 🪤 note.
-- **`gh` not logged in?** `git push` uses the keychain credential; you can reuse it for the release
-  without `gh auth login`:
-  ```bash
-  TOKEN=$(printf "protocol=https\nhost=github.com\n\n" | git credential fill | sed -n 's/^password=//p')
-  GH_TOKEN="$TOKEN" gh release create ...
-  ```
+- **`gh` not logged in?** The release step needs GitHub API auth (`gh auth login` or a
+  `GH_TOKEN`) — a working `git push` alone is not enough, releases are API objects.
 - **Version must be higher than the installed one** or AgentsPoppy won't surface it as an update.
 - **The catalog — not the GitHub release — is what AgentsPoppy reads.** A perfect release with no
   catalog bump is invisible. `updateAvailable` = (catalog `version` > installed `version`). Always

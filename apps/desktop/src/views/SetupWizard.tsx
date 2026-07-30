@@ -13,6 +13,8 @@ import { AwsOnboarding } from "./AwsOnboarding";
 import { friendlyError } from "../lib/errors";
 import { AdminPrivacyNotice } from "./AdminPrivacyNotice";
 import { SetupProgress } from "./SetupProgress";
+import { HelperPromptBanner } from "./HelperPromptBanner";
+import { DEPLOY_OPTIONS, DOMAIN_STEP, MAILBOX_FIELDS } from "../lib/setupCatalogue";
 import { deriveResume, setupPhases, type SetupStep } from "../lib/setupProgress";
 import { Card, Button, Spinner, cn } from "../ui";
 
@@ -665,6 +667,11 @@ export function SetupWizard({
             ? "Add the DNS records that let this domain send and receive email — all inside your own AWS account, so your mail stays yours. Nothing leaves this computer."
             : "Set up everything your email needs — the service that runs it, and your domain's DNS records — all inside your own AWS account, so your mail stays yours. Nothing leaves this computer."}
         </p>
+        {/* The helper prompt (AGENTS.md §9, REQUIRED): the training IS a prompt. Sits directly
+            under the intro, so it's the first thing offered before any decision is asked for. */}
+        <div className="mt-3 max-w-2xl">
+          <HelperPromptBanner domain={domain || undefined} region={loadDeploymentConfig()?.region} />
+        </div>
       </div>
 
       {/* The compact progress stepper is pinned at the TOP of the view: the user
@@ -789,11 +796,11 @@ export function SetupWizard({
 
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-sm text-on-surface-variant">
-            Domain
+            {DOMAIN_STEP.label}
             <input
               value={domain}
               onChange={(e) => setDomain(e.target.value.trim().toLowerCase())}
-              placeholder="yourdomain.com"
+              placeholder={DOMAIN_STEP.placeholder}
               disabled={!ready || step !== "start" || !!presetDomain}
               className={cn(inputCls, "w-64")}
               {...noAutoCap}
@@ -837,23 +844,25 @@ export function SetupWizard({
             hosted zone, so a failed/again-pending pre-check never strands it here. */}
         {step === "preflighted" && !backendDeployed && (
           <div className="mt-4">
-            <label className="mb-3 flex max-w-lg items-start gap-2 text-sm text-on-surface-variant">
-              <input type="checkbox" checked={enableMalware} onChange={(e) => setEnableMalware(e.target.checked)} className="mt-1 size-4 accent-primary" />
-              <span>
-                <b className="text-on-surface">Scan attachments for viruses</b> <span className="text-secondary">(recommended)</span> —
-                checks files for malware before anyone can download them. There&apos;s a small AWS cost, but it&apos;s usually
-                free for a personal mailbox.
-              </span>
-            </label>
-            <label className="mb-3 flex max-w-lg items-start gap-2 text-sm text-on-surface-variant">
-              <input type="checkbox" checked={encryptAtRest} onChange={(e) => setEncryptAtRest(e.target.checked)} className="mt-1 size-4 accent-primary" />
-              <span>
-                <b className="text-on-surface">Lock each mailbox with its owner&apos;s password</b>{" "}
-                <span className="text-secondary">(recommended)</span> — so even you, the account owner, can&apos;t read
-                someone&apos;s email. Only turn this off if some people will read their mail in an older MailPoppy app that
-                can&apos;t open locked mail. The subject and sender stay visible either way.
-              </span>
-            </label>
+            {/* Both options come from DEPLOY_OPTIONS so the helper prompt describes exactly
+                these boxes, in exactly these words (AGENTS.md §9, rule 1). */}
+            {DEPLOY_OPTIONS.map((o) => (
+              <label key={o.key} className="mb-3 flex max-w-lg items-start gap-2 text-sm text-on-surface-variant">
+                <input
+                  type="checkbox"
+                  checked={o.key === "malwareScan" ? enableMalware : encryptAtRest}
+                  onChange={(e) =>
+                    (o.key === "malwareScan" ? setEnableMalware : setEncryptAtRest)(e.target.checked)
+                  }
+                  className="mt-1 size-4 accent-primary"
+                />
+                <span>
+                  <b className="text-on-surface">{o.label}</b>{" "}
+                  {o.recommended && <span className="text-secondary">(recommended)</span>} — {o.what}{" "}
+                  {o.caution}
+                </span>
+              </label>
+            ))}
             <Button onClick={onDeploy} disabled={busy}>
               <Rocket className="size-4" /> Set up email service
             </Button>
@@ -1054,7 +1063,7 @@ export function SetupWizard({
               )}
               <div className="mt-4 flex flex-wrap items-end gap-3">
                 <label className="flex flex-col gap-1 text-sm text-on-surface-variant">
-                  Email address
+                  {MAILBOX_FIELDS.address.label}
                   <span className="flex items-stretch">
                     <input
                       aria-label="Mailbox email"
@@ -1064,7 +1073,7 @@ export function SetupWizard({
                       // of habit (the domain is already shown as the fixed suffix),
                       // drop everything from "@" on so we never build "you@d.com@d.com".
                       onChange={(e) => setMbLocalPart(e.target.value.trim().toLowerCase().replace(/@.*$/, ""))}
-                      placeholder="you"
+                      placeholder={MAILBOX_FIELDS.address.placeholder}
                       className={cn(inputCls, "w-40 rounded-r-none")}
                       {...noAutoCap}
                     />
@@ -1074,7 +1083,7 @@ export function SetupWizard({
                   </span>
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-on-surface-variant">
-                  Password
+                  {MAILBOX_FIELDS.password.label}
                   <input
                     aria-label="Mailbox password"
                     type="password"
@@ -1090,9 +1099,7 @@ export function SetupWizard({
                   {mbBusy ? "Creating…" : "Create mailbox"}
                 </Button>
               </div>
-              <p className="mt-1.5 text-xs text-on-surface-variant/70">
-                Password must meet the pool policy (min 8 chars, with upper &amp; lower case, a number and a symbol).
-              </p>
+              <p className="mt-1.5 text-xs text-on-surface-variant/70">{MAILBOX_FIELDS.password.policy}</p>
 
               {mbCreated && (
                 <div className="mt-4 rounded-xl border border-secondary/40 bg-secondary/10 p-5">

@@ -3,6 +3,7 @@ import { KeyRound, Copy, Check, ShieldAlert, Eye, EyeOff } from "lucide-react";
 import type { Authenticator } from "../lib/auth";
 import { Card, Button, Spinner } from "../ui";
 import { friendlyError } from "../lib/errors";
+import { copyText } from "../lib/clipboard";
 
 // Mailbox sign-in (Cognito). On success the parent gets a getToken() it hands to
 // the live MailClient. Admin-created users are prompted to set a password first.
@@ -182,34 +183,6 @@ export function LoginView({
   );
 }
 
-/**
- * Copy text to the clipboard, robust to contexts where the async Clipboard API is
- * blocked — e.g. inside a host iframe that doesn't delegate `clipboard-write`, or a
- * non-secure origin. Falls back to the legacy execCommand path, which only needs a
- * user gesture (the button click) and no Permissions-Policy grant.
- */
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    /* fall through to the legacy path */
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
-    return ok;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Shown once, right after a mailbox keypair is created (first login, or a re-key

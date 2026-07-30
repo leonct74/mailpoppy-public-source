@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getAgentOwned as defaultLoad, setAgentOwned as defaultSave, type MailboxAgentInfo } from "../lib/mailboxAgent";
 import { Button } from "../ui";
 import { friendlyError } from "../lib/errors";
+import { AGENT_MAILBOX } from "../lib/setupCatalogue";
 
 // The agent-owned flag on one mailbox (the CrewPoppy bridge): when ON, mail
 // arriving for this mailbox is handed to the admin's CrewPoppy agents so an
@@ -78,24 +79,21 @@ export function AgentOwnedToggle({
           }}
           className={linkBtn}
         >
-          Assign this mailbox to an AI agent…
+          {AGENT_MAILBOX.trigger}
         </button>
       ) : (
         <div className="max-w-xl rounded-lg border border-warn/40 bg-warn/5 p-3">
           <div className="text-sm leading-relaxed text-on-surface-variant">
             {/* Founder note (2026-07-29): say the prerequisite FIRST. Without it, a user
                 who never installed CrewPoppy could flip this on expecting something to
-                happen, and nothing would — a switch wired to nothing. */}
-            <b className="text-on-surface">This needs CrewPoppy</b> — the AgentsPoppy app that runs AI agents in your
-            own AWS account. If CrewPoppy isn&apos;t installed and set up, this switch does nothing: mail just delivers
-            normally. With CrewPoppy, mail arriving for <b className="text-on-surface">{email}</b> starts the agent that
-            owns this address — so you can email it an instruction from anywhere.{" "}
-            <b className="text-on-surface">
-              An agent mailbox is NOT private the way human mailboxes are — its incoming mail is handed to an AI agent
-              in plain text.
-            </b>{" "}
-            Your human mailboxes are unchanged, and only mail that passes authentication and comes from your own
-            address can start a run.
+                happen, and nothing would — a switch wired to nothing.
+                The sentences come from AGENT_MAILBOX so the helper prompt promotes the
+                sibling poppy in exactly these words (AGENTS.md §9). */}
+            <b className="text-on-surface">This needs CrewPoppy</b>
+            {AGENT_MAILBOX.prerequisiteFirst.replace("This needs CrewPoppy", "")} With CrewPoppy, mail arriving for{" "}
+            <b className="text-on-surface">{email}</b> starts the agent that owns this address — so you can email it an
+            instruction from anywhere. <b className="text-on-surface">{AGENT_MAILBOX.privacyWarning}</b>{" "}
+            {AGENT_MAILBOX.scope}
           </div>
           <div className="mt-2.5 flex items-center gap-2">
             <Button size="sm" onClick={() => void apply(true)} disabled={busy}>

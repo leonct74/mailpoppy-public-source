@@ -27,6 +27,7 @@ import { getMailFromStatus as defaultGetMailFrom } from "../lib/mailFrom";
 import { getDomainIdentityStatus as defaultGetDomainStatus, type DomainIdentityStatus } from "../lib/provision";
 import { removeDomain as defaultRemoveDomain, type RemoveDomainResult } from "../lib/teardown";
 import { friendlyError } from "../lib/errors";
+import { MAILBOX_FIELDS } from "../lib/setupCatalogue";
 import { withTimeout } from "../lib/withTimeout";
 import { MailboxStorageRow } from "./MailboxStorageRow";
 import { PolicyEditor } from "./PolicyEditor";
@@ -471,9 +472,7 @@ export function DomainView({
             {mbBusy ? "Creating…" : "Create mailbox"}
           </Button>
         </div>
-        <p className="mt-1.5 text-xs text-on-surface-variant/70">
-          Password must meet the pool policy (min 8 chars, with upper &amp; lower case, a number and a symbol).
-        </p>
+        <p className="mt-1.5 text-xs text-on-surface-variant/70">{MAILBOX_FIELDS.password.policy}</p>
 
         {mbCreated && (
           <div className="mt-3 rounded-lg border border-secondary/30 bg-secondary/10 p-3 text-sm text-on-surface">
