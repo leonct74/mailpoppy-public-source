@@ -13,7 +13,9 @@
     "tauri:dev": "tauri dev",
     "tauri:dev:clean": "lsof -ti tcp:1420 | xargs kill -9 2>/dev/null; lsof -ti tcp:8787 | xargs kill -9 2>/dev/null; pkill -9 -f 'apps/desktop/src-tauri/target/debug/mailpoppy' 2>/dev/null; tauri dev",
     "tauri:build": "tauri build",
-    "build:bundle": "node node-sidecar/scripts/build-node-bundle.mjs"
+    "build:bundle": "node node-sidecar/scripts/build-node-bundle.mjs",
+    "sync-feedback": "node ${AGENTSPOPPY_REPO:-../../../agentspoppy}/scripts/sync-feedback-tab.mjs --dest src/vendor",
+    "check-feedback": "node ${AGENTSPOPPY_REPO:-../../../agentspoppy}/scripts/sync-feedback-tab.mjs --dest src/vendor --check"
   },
   "dependencies": {
     "@mailpoppy/api-client": "*",

@@ -111,3 +111,4 @@ export function invokeBackend<T>(req: { method: string; path: string; body?: unk
 export function openExternalViaHost(url: string): Promise<void> {
   return callHost<void>("openExternal", [url]);
 }
+

@@ -33,6 +33,8 @@ export interface ExtensionManifest {
   version: string;
   description?: string;
   icon?: string;
+  /** Where users file bugs — the mandatory Feedback tab's "Report a bug" opens it. */
+  bugsUrl?: string;
   permissionSet: ReturnType<typeof permissionSet>;
   frontend: { entry: string };
   backend?: { entry: string; transport?: "http" | "stdio"; runtime?: "node22" | "native" };
@@ -42,7 +44,7 @@ export interface ExtensionManifest {
 }
 
 /** The Tauri/extension version — must match src-tauri/tauri.conf.json. */
-const VERSION = "0.1.14";
+const VERSION = "0.1.15";
 
 /**
  * The host-spawned backend, run on AgentsPoppy's SHARED Node runtime (docs/RUNTIMES.md):
@@ -76,6 +78,8 @@ export function buildExtensionManifest(): ExtensionManifest {
     version: VERSION,
     description: "Run your own private mail backend on your AWS account — deploy, manage, and tear it down.",
     icon: "frontend/mailpoppy-icon.png",
+    // The public mirror, not this private monorepo — a user must be able to open it.
+    bugsUrl: "https://github.com/leonct74/mailpoppy-public-source/issues",
     permissionSet: permissionSet(),
     frontend: { entry: "frontend/index.html" },
     backend: { entry: BACKEND_ENTRY, transport: "http", runtime: "node22" },

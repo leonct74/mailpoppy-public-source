@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { LayoutDashboard, Inbox, ArrowLeftRight, HeartPulse, SlidersHorizontal, ShieldCheck, type LucideIcon } from "lucide-react";
+import { LayoutDashboard, Inbox, ArrowLeftRight, HeartPulse, SlidersHorizontal, ShieldCheck, MessageSquareHeart, type LucideIcon } from "lucide-react";
 import { HomeView } from "./views/HomeView";
 import { DomainView } from "./views/DomainView";
 import { SetupWizard } from "./views/SetupWizard";
 import { InboxView } from "./views/InboxView";
 import { AccountView } from "./views/AccountView";
+import { FeedbackView } from "./views/FeedbackView";
 import { BackendUpdateBanner } from "./views/BackendUpdateBanner";
 import { SendingHealthView } from "./views/SendingHealthView";
 import { MigrationView } from "./views/MigrationView";
@@ -25,7 +26,7 @@ import {
   type AccountsState,
 } from "./lib/accounts";
 import { cn, Logo, Spinner } from "./ui";
-import { onHostEvent } from "./lib/hostBridge";
+import { onHostEvent, inAgentsPoppyContainer } from "./lib/hostBridge";
 import { restoreStartupRegion, savedRegion } from "./lib/region";
 import { autoDiscoverRegion } from "./lib/discovery";
 import {
@@ -39,7 +40,7 @@ import {
 // "Setup" is intentionally NOT a sidebar tab — it's a per-domain flow reached
 // from "Add domain" (Home) or a domain card's "Domain setup" action, so it's
 // never ambiguous which domain you're configuring.
-type Tab = "home" | "inbox" | "migrate" | "health" | "account";
+type Tab = "home" | "inbox" | "migrate" | "health" | "account" | "feedback";
 
 const NAV: { id: Tab; label: string; icon: LucideIcon; blurb: string }[] = [
   { id: "home", label: "Home", icon: LayoutDashboard, blurb: "Overview of your domains and mailboxes" },
@@ -47,7 +48,13 @@ const NAV: { id: Tab; label: string; icon: LucideIcon; blurb: string }[] = [
   { id: "migrate", label: "Migrate", icon: ArrowLeftRight, blurb: "Bring your old mail across via IMAP" },
   { id: "health", label: "Sending health", icon: HeartPulse, blurb: "Is each domain's mail reaching inboxes?" },
   { id: "account", label: "Account", icon: SlidersHorizontal, blurb: "Shared settings & the AWS resources MailPoppy manages" },
+  // Mandatory in every poppy and always LAST (AGENTS.md §9a). It talks to the AgentsPoppy host,
+  // so it's filtered out when MailPoppy runs as its own standalone window (see VISIBLE_NAV).
+  { id: "feedback", label: "Feedback", icon: MessageSquareHeart, blurb: "Rate MailPoppy, ask for a feature, report a bug, support the developer" },
 ];
+
+/** Standalone there is no AgentsPoppy to rate or donate through, so the tab isn't offered. */
+const VISIBLE_NAV = inAgentsPoppyContainer() ? NAV : NAV.filter((n) => n.id !== "feedback");
 
 /** Setup drill-in target: a new domain ({}) or re-running an existing one. */
 type SetupTarget = { domain?: string };
@@ -385,7 +392,7 @@ export function App() {
         </div>
         {/* Row 2 — navigation tabs, spanning the full width */}
         <nav className="flex items-center gap-1 overflow-x-auto px-4 pb-2">
-          {NAV.map(({ id, label, icon: Icon, blurb }) => {
+          {VISIBLE_NAV.map(({ id, label, icon: Icon, blurb }) => {
             const active = tab === id;
             return (
               <button
@@ -483,6 +490,13 @@ export function App() {
             <div className={cn("h-full overflow-y-auto px-8 py-8", tab === "account" ? "block" : "hidden")}>
               <div className="mx-auto max-w-6xl">
                 <AccountView />
+              </div>
+            </div>
+          )}
+          {visited.has("feedback") && (
+            <div className={cn("h-full overflow-y-auto px-8 py-8", tab === "feedback" ? "block" : "hidden")}>
+              <div className="mx-auto max-w-3xl">
+                <FeedbackView />
               </div>
             </div>
           )}
