@@ -297,6 +297,30 @@ function InboxTab({ prefillEmail, regionReady }: { prefillEmail?: string | null;
   );
 }
 
+/**
+ * The in-browser demo shell (agentspoppy.com serves the released frontend in a
+ * sandboxed iframe with ?demo=1): straight into the demo inbox — the product's
+ * face — with the brand header. No admin tabs: every one of them talks to the
+ * local helper process, which a web page rightly doesn't have. No onConnect
+ * either — the surrounding site carries the "deploy for real" call-to-action,
+ * and InboxView's own "Demo data" banner marks the inside.
+ */
+export function WebDemoShell() {
+  return (
+    <div className="flex h-screen flex-col bg-surface text-on-surface">
+      <header className="flex shrink-0 items-center gap-4 border-b border-outline-variant/10 bg-surface-container-low px-6 py-3">
+        <Logo />
+        <span className="ml-auto rounded-full bg-primary-container/15 px-2 py-0.5 font-mono text-[10px] font-medium uppercase tracking-wider text-primary">
+          Demo
+        </span>
+      </header>
+      <main className="flex min-h-0 flex-1 flex-col px-6 py-6">
+        <InboxView demo />
+      </main>
+    </div>
+  );
+}
+
 export function App() {
   const [tab, setTab] = useState<Tab>("home");
   // Tabs visited so far. Once visited, a view is kept mounted (hidden when

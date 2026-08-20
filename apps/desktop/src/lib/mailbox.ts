@@ -98,13 +98,13 @@ export function parseMailboxImport(input: {
 }
 
 /**
- * Generate the friendly .xlsx template and save it to the user's machine,
- * returning where it landed. The sidecar writes the file (the webview can't),
- * normally into the Downloads folder.
+ * Generate the friendly .xlsx template and stage it under a one-shot download token.
+ * Neither the webview nor the (confined) sidecar can save a file to the user's folders —
+ * the caller opens the token URL in the SYSTEM BROWSER, which saves it (localDownload.ts).
  */
 export function saveMailboxImportTemplate(
   domain: string,
-): Promise<{ ok: true; path: string; filename: string; dir: string }> {
+): Promise<{ ok: true; token: string; filename: string }> {
   return sidecar(`/mailbox/import/template`, {
     method: "POST",
     headers: { "content-type": "application/json" },

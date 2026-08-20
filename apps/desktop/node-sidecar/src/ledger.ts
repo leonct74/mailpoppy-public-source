@@ -10,8 +10,8 @@
  * ledger write must never break (or mask) the provisioning operation itself.
  */
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { storageHome } from "./storage";
 
 export type LedgerAction = "created" | "deleted" | "updated";
 
@@ -26,7 +26,9 @@ export interface LedgerEntry {
 }
 
 function ledgerPath(): string {
-  return process.env.MAILPOPPY_LEDGER ?? join(homedir(), ".mailpoppy", "provisioning-ledger.json");
+  // storage.ts owns WHERE (the host's data folder since 0.1.16, ~/.mailpoppy before —
+  // and the ledger is an input to teardown correctness, so its one-time move matters).
+  return process.env.MAILPOPPY_LEDGER ?? join(storageHome(), "provisioning-ledger.json");
 }
 
 export async function readLedger(): Promise<LedgerEntry[]> {

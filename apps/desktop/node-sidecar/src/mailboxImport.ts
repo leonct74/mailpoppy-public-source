@@ -5,10 +5,6 @@
 // rules live in core — this module is just spreadsheet I/O.
 import ExcelJS from "exceljs";
 import { Readable } from "node:stream";
-import { writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
 import { planFromGrid, type MailboxImportPlan } from "@mailpoppy/core";
 
 type Cell = string | number | null | undefined;
@@ -176,26 +172,11 @@ export async function buildTemplateWorkbook(domain: string): Promise<Buffer> {
 }
 
 /**
- * Generate the template and write it to disk, returning where it landed. The
- * webview can't honor a blob `<a download>` (and the opener plugin only allows
- * http/https), so the sidecar — which is local to the user's machine and already
- * has filesystem access — saves the file itself. Prefers the user's Downloads
- * folder; falls back to the OS temp dir if Downloads is missing or not writable
- * (e.g. a macOS TCC prompt was declined).
+ * The friendly .xlsx template as BYTES. The sidecar used to write this into ~/Downloads
+ * (falling back to temp), but since 0.1.16 it is being confined away from the user's
+ * folders — the route stages these bytes under a one-shot token and the SYSTEM BROWSER
+ * saves the file (the same handoff attachments use).
  */
-export async function saveTemplate(domain: string): Promise<{ path: string; filename: string; dir: string }> {
-  const buf = await buildTemplateWorkbook(domain);
-  const filename = `mailpoppy-mailboxes-${domain}.xlsx`;
-  let lastErr: unknown;
-  for (const dir of [join(homedir(), "Downloads"), tmpdir()]) {
-    if (!existsSync(dir)) continue;
-    try {
-      const path = join(dir, filename);
-      await writeFile(path, buf);
-      return { path, filename, dir };
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr instanceof Error ? lastErr : new Error("could not write the template file");
+export async function buildTemplate(domain: string): Promise<{ filename: string; buf: Buffer }> {
+  return { filename: `mailpoppy-mailboxes-${domain}.xlsx`, buf: await buildTemplateWorkbook(domain) };
 }

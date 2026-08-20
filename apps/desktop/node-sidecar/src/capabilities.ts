@@ -13,6 +13,7 @@
 //               (deploy policy only)
 
 import { fromIni } from "@aws-sdk/credential-providers";
+import { brokerCredentials } from "./agentspoppyBroker";
 import { STSClient, GetCallerIdentityCommand } from "@aws-sdk/client-sts";
 import { IAMClient, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
 import type { AwsContext } from "./provisioning";
@@ -55,7 +56,10 @@ export function policySourceArn(arn: string): string {
 class SimulateUnavailable extends Error {}
 
 export async function checkCapabilities(ctx: AwsContext): Promise<CapabilityReport> {
-  const credentials = ctx.profile ? fromIni({ profile: ctx.profile, ignoreCache: true }) : undefined;
+  // Broker FIRST, exactly like provisioning.clients — otherwise the wizard's permission
+  // lights read "nothing connected" inside the container while readiness says ready.
+  const credentials =
+    brokerCredentials() ?? (ctx.profile ? fromIni({ profile: ctx.profile, ignoreCache: true }) : undefined);
   const sts = new STSClient({ region: ctx.region, credentials });
 
   let arn = "";

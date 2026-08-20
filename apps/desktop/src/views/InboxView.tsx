@@ -151,7 +151,7 @@ export function InboxView({
   const [preview, setPreview] = useState<{ url: string | null; name: string; kind: "image" | "pdf"; bytes: Uint8Array; contentType: string } | null>(null);
   // Which attachment is being fetched/decrypted right now (spinner on its chip).
   const [attBusy, setAttBusy] = useState<number | null>(null);
-  // "Saved to Downloads" confirmation, auto-dismissed.
+  // "Your browser is downloading …" confirmation, auto-dismissed.
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   // One-time security note explaining SES's built-in virus/spam scanning.
   const [scanNoteDismissed, setScanNoteDismissed] = useState(
@@ -313,14 +313,14 @@ export function InboxView({
     return new Uint8Array(await (await fetch(url)).arrayBuffer());
   }
 
-  /** Save bytes into ~/Downloads (no browser window); falls back to the browser
-   *  handoff on an old sidecar, and to a manual link if even that can't open. */
+  /** Save bytes via the one-shot browser handoff (the confined backend can't write the
+   *  user's folders); shows a manual link if the browser couldn't be opened. */
   async function saveAttachment(filename: string, contentType: string, bytes: Uint8Array) {
     const out = await saveBytesToDownloads(filename, contentType, bytes);
-    if (out.savedAs) {
-      setSaveNotice(out.savedAs);
-      window.setTimeout(() => setSaveNotice((cur) => (cur === out.savedAs ? null : cur)), 6000);
-    } else if (out.url && !out.opened) {
+    if (out.opened) {
+      setSaveNotice(filename);
+      window.setTimeout(() => setSaveNotice((cur) => (cur === filename ? null : cur)), 6000);
+    } else if (out.url) {
       setAttachmentLink({ url: out.url, filename });
     }
   }
@@ -619,7 +619,7 @@ export function InboxView({
 
       {saveNotice && (
         <div className="mt-3 inline-flex items-center gap-2 rounded-lg border border-secondary/30 bg-secondary/10 px-3 py-2 text-sm text-secondary">
-          <CheckCircle2 className="size-4" /> Saved to Downloads: <strong>{saveNotice}</strong>
+          <CheckCircle2 className="size-4" /> Your browser is downloading <strong>{saveNotice}</strong>
         </div>
       )}
 
@@ -997,11 +997,11 @@ function AttachmentPreview({
         <span className="min-w-0 flex-1 truncate text-sm font-medium text-on-surface">{name}</span>
         {saveNotice && (
           <span className="inline-flex items-center gap-1.5 text-xs text-secondary">
-            <CheckCircle2 className="size-3.5" /> Saved to Downloads
+            <CheckCircle2 className="size-3.5" /> Downloading in your browser
           </span>
         )}
         <Button size="sm" variant="secondary" onClick={onSave}>
-          <Download className="size-3.5" /> Save to Downloads
+          <Download className="size-3.5" /> Download
         </Button>
         <Button size="sm" variant="ghost" aria-label="Close preview" onClick={onClose}>
           <X className="size-4" />

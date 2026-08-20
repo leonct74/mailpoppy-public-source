@@ -18,11 +18,12 @@
  */
 import { promises as fs } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
 import { join, dirname } from "node:path";
+import { storageHome } from "./storage";
 
 function storePath(): string {
-  return process.env.MAILPOPPY_BUYER_ID ?? join(homedir(), ".mailpoppy", "buyer-id.json");
+  // storage.ts owns WHERE (the host's data folder since 0.1.16, ~/.mailpoppy before).
+  return process.env.MAILPOPPY_BUYER_ID ?? join(storageHome(), "buyer-id.json");
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

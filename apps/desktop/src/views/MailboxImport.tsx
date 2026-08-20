@@ -1,4 +1,6 @@
 import { useRef, useState } from "react";
+import { downloadUrlFor } from "../lib/localDownload";
+import { openExternal } from "../lib/openExternal";
 import { Upload, Download, FileSpreadsheet, CheckCircle2, XCircle, AlertTriangle, ArrowRight } from "lucide-react";
 import type { MailboxImportPlan } from "@mailpoppy/core";
 import {
@@ -46,7 +48,7 @@ export function MailboxImport({
   stackName?: string;
   onImported?: () => void;
   parse?: ParseFn;
-  saveTemplate?: (domain: string) => Promise<{ ok: true; path: string; filename: string; dir: string }>;
+  saveTemplate?: (domain: string) => Promise<{ ok: true; token: string; filename: string }>;
   readFileBase64?: (file: File) => Promise<string>;
   createMailbox?: CreateFn;
   runMigration?: MigrateFn;
@@ -60,7 +62,7 @@ export function MailboxImport({
   const [running, setRunning] = useState(false);
   const [finished, setFinished] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
-  const [templateSaved, setTemplateSaved] = useState<{ filename: string; dir: string } | null>(null);
+  const [templateSaved, setTemplateSaved] = useState<{ filename: string; url?: string } | null>(null);
 
   function reset() {
     setFileName(null);
@@ -95,11 +97,13 @@ export function MailboxImport({
     setTemplateSaved(null);
     setSavingTemplate(true);
     try {
-      // The webview can't trigger a file save (blob <a download> is ignored, and
-      // the opener plugin only allows http/https), so the local sidecar writes the
-      // file to disk for us and tells us where it landed.
-      const { filename, dir } = await saveTemplate(domain);
-      setTemplateSaved({ filename, dir });
+      // Neither the webview (blob <a download> is ignored) nor the sidecar (confined
+      // away from the user's folders) can save the file — the sidecar stages it under a
+      // one-shot token and the SYSTEM BROWSER downloads it.
+      const { filename, token } = await saveTemplate(domain);
+      const url = downloadUrlFor(token);
+      const opened = await openExternal(url);
+      setTemplateSaved(opened ? { filename } : { filename, url });
     } catch (e) {
       setParseError(friendlyError(e));
     } finally {
@@ -200,8 +204,18 @@ export function MailboxImport({
 
       {templateSaved && (
         <div className="mt-2 rounded-lg border border-secondary/30 bg-secondary/10 p-2.5 text-sm text-on-surface">
-          ✅ Template saved as <b>{templateSaved.filename}</b> in{" "}
-          <code className="font-mono text-xs text-on-surface-variant">{templateSaved.dir}</code>.
+          {templateSaved.url ? (
+            <>
+              Couldn't open your browser — copy this address into any browser within a minute to get{" "}
+              <b>{templateSaved.filename}</b>:{" "}
+              <code className="font-mono text-xs text-on-surface-variant select-all break-all">{templateSaved.url}</code>
+            </>
+          ) : (
+            <>
+              ✅ Your browser is downloading <b>{templateSaved.filename}</b> — find it in the browser's
+              downloads, then fill one row per mailbox.
+            </>
+          )}
         </div>
       )}
 

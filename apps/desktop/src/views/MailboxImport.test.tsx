@@ -44,9 +44,8 @@ function deps(over: Partial<Parameters<typeof MailboxImport>[0]> = {}) {
     parse: vi.fn(async () => ({ ok: true as const, plan: plan() })),
     saveTemplate: vi.fn(async () => ({
       ok: true as const,
-      path: "/Users/me/Downloads/mailpoppy-mailboxes-acme.com.xlsx",
+      token: "tok-template-1",
       filename: "mailpoppy-mailboxes-acme.com.xlsx",
-      dir: "/Users/me/Downloads",
     })),
     createMailbox: vi.fn(async (input: { email: string }) => ({ ...BACKEND, mailbox: { email: input.email, status: "CONFIRMED" } })),
     runMigration: vi.fn(async () => ({
@@ -68,16 +67,18 @@ function pickFile() {
 }
 
 describe("MailboxImport", () => {
-  it("makes the optional nature of IMAP explicit and saves the template to disk", async () => {
+  it("makes the optional nature of IMAP explicit and hands the template to the browser", async () => {
     const d = deps();
     render(<MailboxImport {...d} />);
 
     expect(screen.getByText(/the IMAP columns are/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Download template/i }));
     await waitFor(() => expect(d.saveTemplate).toHaveBeenCalledWith("acme.com"));
-    // The UI confirms where the file landed (the webview can't pop a save dialog).
-    expect(await screen.findByText(/Template saved as/i)).toBeInTheDocument();
-    expect(screen.getByText("/Users/me/Downloads")).toBeInTheDocument();
+    // The sidecar stages the file under a one-shot token; the confirmation names the
+    // file whether the browser opened (jsdom: window.open works → "downloading") or the
+    // manual copy-the-address fallback showed. Either way the user is never stuck.
+    expect(await screen.findByText("mailpoppy-mailboxes-acme.com.xlsx")).toBeInTheDocument();
+    expect(screen.getByText(/downloading|copy this address/i)).toBeInTheDocument();
   });
 
   it("parses a chosen file and previews valid/migrate/error counts per row", async () => {

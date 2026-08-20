@@ -259,6 +259,13 @@ interface BackendBootstrap {
    *  poppy can't use it to touch a sibling. Absent against a pre-auth broker. */
   credentialsToken?: string;
   port?: number;
+  /**
+   * The private, per-poppy folder the host created for us (0700) — once the backend is
+   * confined (`backend.isolation: "strict"`), the ONLY place outside the OS temp dir it
+   * may write. The provisioning ledger and the buyer id live here (storage.ts). Absent
+   * on a host too old to send it, which is also a host too old to confine us.
+   */
+  dataDir?: string;
   account: { accountId: string; region: string };
 }
 
@@ -280,6 +287,7 @@ function readBootstrap(): BackendBootstrap | null {
         credentialsUrl: b.credentialsUrl,
         credentialsToken: typeof b.credentialsToken === "string" ? b.credentialsToken : undefined,
         port: typeof b.port === "number" ? b.port : undefined,
+        dataDir: typeof b.dataDir === "string" && b.dataDir ? b.dataDir : undefined,
         account: { accountId: b.account.accountId, region: b.account.region },
       };
     }
@@ -343,6 +351,11 @@ export function brokerRegion(): string | undefined {
 /** The loopback port the host assigned this backend to listen on (container mode only). */
 export function brokerPort(): number | undefined {
   return bootstrap?.port;
+}
+
+/** The host's private data folder for this poppy (container mode only) — see storage.ts. */
+export function brokerDataDir(): string | undefined {
+  return bootstrap?.dataDir;
 }
 
 /**

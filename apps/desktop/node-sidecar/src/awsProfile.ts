@@ -9,6 +9,17 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+
+/** `existsSync` that can't throw: under Node's permission model (`--permission`, the
+ *  confined container) a probe of a DENIED path THROWS ERR_ACCESS_DENIED instead of
+ *  returning false. A denied ~/.aws must read as "no profile", never as a crash. */
+function exists(path: string): boolean {
+  try {
+    return existsSync(path);
+  } catch {
+    return false;
+  }
+}
 import { upsertIniSection } from "@mailpoppy/core";
 
 /** The profile name the in-app key entry writes to (never `default`). */
@@ -21,7 +32,7 @@ const credentialsPath = (): string => join(awsDir(), "credentials");
 export function mailpoppyProfileExists(): boolean {
   try {
     const p = credentialsPath();
-    return existsSync(p) && /^\s*\[\s*mailpoppy\s*\]\s*$/m.test(readFileSync(p, "utf8"));
+    return exists(p) && /^\s*\[\s*mailpoppy\s*\]\s*$/m.test(readFileSync(p, "utf8"));
   } catch {
     return false;
   }
@@ -48,10 +59,10 @@ export function writeMailpoppyProfile(input: AwsKeyInput): void {
   }
 
   const dir = awsDir();
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
+  if (!exists(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const p = credentialsPath();
-  const existing = existsSync(p) ? readFileSync(p, "utf8") : "";
+  const existing = exists(p) ? readFileSync(p, "utf8") : "";
   const lines = [
     `aws_access_key_id = ${accessKeyId}`,
     `aws_secret_access_key = ${secretAccessKey}`,

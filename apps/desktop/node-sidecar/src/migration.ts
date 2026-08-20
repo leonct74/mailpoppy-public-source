@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { ImapFlow, type ListResponse } from "imapflow";
 import { simpleParser, type AddressObject } from "mailparser";
 import { fromIni } from "@aws-sdk/credential-providers";
+import { brokerCredentials } from "./agentspoppyBroker";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, PutCommand } from "@aws-sdk/lib-dynamodb";
@@ -149,9 +150,13 @@ export async function testImap(src: ImapSource): Promise<{ ok: true; folders: Im
 
 export async function migrate(ctx: AwsContext, opts: MigrateOptions): Promise<MigrateSummary> {
   const { source, target } = opts;
-  // ignoreCache: re-read ~/.aws/credentials fresh — the profile may have been
-  // written this session (see provisioning.clients for the full rationale).
-  const credentials = ctx.profile ? fromIni({ profile: ctx.profile, ignoreCache: true }) : undefined;
+  // Broker FIRST, exactly like provisioning.clients: in the AgentsPoppy container the
+  // local profile plane doesn't exist (env stripped, ~/.aws unreadable once confined) —
+  // without this branch the whole WorkMail/IMAP import silently ran with no credentials.
+  // ignoreCache on the fallback: re-read ~/.aws/credentials fresh — the profile may have
+  // been written this session (see provisioning.clients for the full rationale).
+  const credentials =
+    brokerCredentials() ?? (ctx.profile ? fromIni({ profile: ctx.profile, ignoreCache: true }) : undefined);
   const s3 = new S3Client({ region: ctx.region, credentials });
   const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({ region: ctx.region, credentials }), {
     marshallOptions: { removeUndefinedValues: true },

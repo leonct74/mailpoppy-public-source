@@ -123,7 +123,7 @@ describe("InboxView", () => {
       await waitFor(() => expect(client.getAttachmentUrl).toHaveBeenCalledWith("m1", 0));
       // The viewer opens IN the app, offering the silent save — no browser window.
       expect(await screen.findByRole("dialog", { name: /Preview: report\.pdf/ })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /Save to Downloads/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Download/ })).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: "Close preview" }));
       await waitFor(() =>

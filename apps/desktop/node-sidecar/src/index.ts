@@ -5,8 +5,8 @@
  */
 import Fastify from "fastify";
 import { randomUUID } from "node:crypto";
-import { existsSync, promises as fsp } from "node:fs";
-import { homedir } from "node:os";
+
+
 import { join } from "node:path";
 import * as prov from "./provisioning";
 import * as migration from "./migration";
@@ -15,13 +15,22 @@ import { readLedger } from "./ledger";
 import { getOrCreateBuyerId } from "./buyerId";
 import { writeMailpoppyProfile, mailpoppyProfileExists, MAILPOPPY_PROFILE } from "./awsProfile";
 import { checkCapabilities } from "./capabilities";
-import { beginBrokerConnect, refreshBrokerStatus, disconnectBroker, brokerRegion, brokerPort } from "./agentspoppyBroker";
+import { beginBrokerConnect, refreshBrokerStatus, disconnectBroker, brokerRegion, brokerPort, brokerDataDir, isContainerMode } from "./agentspoppyBroker";
+import { initStorage } from "./storage";
 import { SES_INBOUND_REGIONS } from "@mailpoppy/core";
 
 // 25 MiB body limit (Fastify defaults to 1 MiB): the bulk-mailbox importer POSTs
 // the chosen spreadsheet as base64 JSON, and base64 inflates the bytes by ~33%.
 // A spreadsheet of mailboxes is tiny, but this leaves generous headroom.
 const app = Fastify({ logger: true, bodyLimit: 25 * 1024 * 1024 });
+
+// Before any route: point the ledger + buyer-id at the host's data folder and carry a
+// pre-0.1.16 ~/.mailpoppy across (one-time, idempotent, best-effort — see storage.ts).
+// Standalone (no bootstrap) keeps using ~/.mailpoppy, unchanged.
+const storage = initStorage(brokerDataDir());
+if (storage.migrated.length) {
+  app.log.info(`moved ${storage.migrated.join(" + ")} from ~/.mailpoppy into ${storage.home}`);
+}
 
 // CORS allowlist. The sidecar binds 127.0.0.1 only, but we still scope CORS to
 // known origins rather than reflecting any origin — a random web page must not be
@@ -84,7 +93,12 @@ function describeError(err: unknown): string {
     /\bCommand failed\b/i.test(msg) ||
     /could not load credentials|credential[_ -]?process|\bSSO\b|ExpiredToken|security token.*(expired|invalid)/i.test(msg);
   if (credLike) {
-    return "Couldn't get your AWS credentials — your session has probably expired. Re-authenticate (e.g. `aws sso login`, or refresh whatever your profile's credential_process uses), then restart Mailpoppy and try again.";
+    // In the AgentsPoppy container credentials come from the broker connection — no local
+    // re-auth exists (and once confined, no home-directory credential source is even
+    // readable), so pointing at `aws sso login` would be a dead end.
+    return isContainerMode()
+      ? "Couldn't get your AWS credentials from AgentsPoppy — the connection may be paused or expired. Open AgentsPoppy, check MailPoppy's connection is active, then try again."
+      : "Couldn't get your AWS credentials — your session has probably expired. Re-authenticate (e.g. `aws sso login`, or refresh whatever your profile's credential_process uses), then restart Mailpoppy and try again.";
   }
   return msg;
 }
@@ -180,28 +194,9 @@ app.get("/local-download/:token", async (req, reply) => {
     .send(item.buf);
 });
 
-// Silent alternative to the browser handoff above: write the bytes straight into
-// the user's Downloads folder and report the final path — the download never
-// leaves the app (no browser window). Used for non-previewable attachments and
-// the preview panel's Download action. Names are de-duplicated ("report (2).pdf"),
-// never overwritten.
-app.post("/local-download/save", async (req, reply) => {
-  const { filename, dataB64 } = (req.body ?? {}) as { filename?: string; dataB64?: string };
-  if (typeof dataB64 !== "string" || !dataB64) {
-    return reply.code(400).send({ error: "dataB64 is required" });
-  }
-  // Base name only: no separators (path traversal) and no leading dot (hidden file).
-  const cleaned = (filename || "attachment").replace(/[/\\]/g, "_").replace(/^\.+/, "_") || "attachment";
-  const dir = join(homedir(), "Downloads");
-  await fsp.mkdir(dir, { recursive: true });
-  const dot = cleaned.lastIndexOf(".");
-  const stem = dot > 0 ? cleaned.slice(0, dot) : cleaned;
-  const ext = dot > 0 ? cleaned.slice(dot) : "";
-  let target = join(dir, cleaned);
-  for (let n = 2; existsSync(target); n++) target = join(dir, `${stem} (${n})${ext}`);
-  await fsp.writeFile(target, Buffer.from(dataB64, "base64"));
-  return { ok: true, path: target, filename: target.slice(dir.length + 1) };
-});
+// (POST /local-download/save — the silent write into ~/Downloads — was removed in 0.1.16:
+// the backend is being confined and may not touch the user's folders. Every save now goes
+// through the one-shot token above; the system browser does the writing.)
 
 // The active region + the regions where SES inbound is supported (the choices).
 app.get("/config/region", async () => ({ region: currentRegion, available: SES_INBOUND_REGIONS }));
@@ -250,6 +245,15 @@ app.get("/aws/capabilities", async () => {
 // a fresh readiness so the UI can confirm the keys actually work. Bad keys aren't
 // an error — readiness will simply show credentials not ok, which the UI surfaces.
 app.post("/aws/credentials", async (req, reply) => {
+  // In the AgentsPoppy container credentials come from the broker connection, and the
+  // confined backend can't write ~/.aws anyway — refuse plainly instead of dying on a
+  // denied write halfway through.
+  if (isContainerMode()) {
+    return reply.code(400).send({
+      ok: false,
+      error: "Inside AgentsPoppy, MailPoppy uses the AWS connection you approved there — there are no keys to paste. Manage access in AgentsPoppy instead.",
+    });
+  }
   const b = (req.body ?? {}) as { accessKeyId?: string; secretAccessKey?: string; sessionToken?: string };
   if (!b.accessKeyId?.trim() || !b.secretAccessKey?.trim()) {
     return reply.code(400).send({ ok: false, error: "Both an Access Key ID and a Secret Access Key are required." });
@@ -619,16 +623,25 @@ app.post("/mailbox/import/parse", async (req, reply) => {
   }
 });
 
-// Generate the friendly .xlsx template and save it to the user's machine
-// (Downloads, falling back to temp). The webview can't trigger a real file save
-// itself — the opener plugin only hands http/https URLs to the OS — so the local
-// sidecar writes the file and returns where it landed for the UI to show.
+// Generate the friendly .xlsx template and stage it under a one-shot download token
+// (same in-memory path as attachment saves). The webview can't save a file itself, and
+// since 0.1.16 neither can this sidecar — the backend is being confined away from the
+// user's folders — so the SYSTEM BROWSER fetches the token URL and saves it.
 app.post("/mailbox/import/template", async (req, reply) => {
   const b = (req.body ?? {}) as { domain?: string };
   if (!b.domain) return reply.code(400).send({ ok: false, error: "domain is required" });
   try {
-    const saved = await mailboxImport.saveTemplate(b.domain);
-    return { ok: true, ...saved };
+    const { filename, buf } = await mailboxImport.buildTemplate(b.domain);
+    const token = randomUUID();
+    const timer = setTimeout(() => pendingDownloads.delete(token), LOCAL_DOWNLOAD_TTL_MS);
+    if (typeof timer.unref === "function") timer.unref();
+    pendingDownloads.set(token, {
+      filename,
+      contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buf,
+      timer,
+    });
+    return { ok: true, token, filename };
   } catch (err) {
     return reply.code(500).send({ ok: false, error: (err as Error).message });
   }
