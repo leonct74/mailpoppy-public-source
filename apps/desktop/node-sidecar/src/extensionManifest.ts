@@ -37,14 +37,14 @@ export interface ExtensionManifest {
   bugsUrl?: string;
   permissionSet: ReturnType<typeof permissionSet>;
   frontend: { entry: string };
-  backend?: { entry: string; transport?: "http" | "stdio"; runtime?: "node22" | "native" };
+  backend?: { entry: string; transport?: "http" | "stdio"; runtime?: "node22" | "native"; isolation?: "strict" | "none" };
   /** Cleanup hook the host POSTs at teardown for resources the stack delete leaves behind. */
   teardown?: { endpoint: string };
   capabilities: Capability[];
 }
 
 /** The Tauri/extension version — must match src-tauri/tauri.conf.json. */
-const VERSION = "0.1.16";
+const VERSION = "0.1.17";
 
 /**
  * The host-spawned backend, run on AgentsPoppy's SHARED Node runtime (docs/RUNTIMES.md):
@@ -82,7 +82,11 @@ export function buildExtensionManifest(): ExtensionManifest {
     bugsUrl: "https://github.com/leonct74/mailpoppy-public-source/issues",
     permissionSet: permissionSet(),
     frontend: { entry: "frontend/index.html" },
-    backend: { entry: BACKEND_ENTRY, transport: "http", runtime: "node22" },
+    // isolation "strict": the host runs this backend under Node's permission model —
+    // install root read; the poppy's data folder + OS temp write; no child processes.
+    // Requires AgentsPoppy >= 0.3.1 (the listing pins minHost) and a 0.1.16 first run
+    // (the one-time ~/.mailpoppy copy can only happen unconfined).
+    backend: { entry: BACKEND_ENTRY, transport: "http", runtime: "node22", isolation: "strict" },
     // Leave no trace: the host POSTs /teardown before deleting our stack, so teardownAll
     // removes the resources the stack RETAINs on delete (mail bucket, DynamoDB tables,
     // Cognito user pool) plus the SES identity + DNS records — nothing survives a teardown.
