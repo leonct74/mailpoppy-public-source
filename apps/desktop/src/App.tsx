@@ -25,7 +25,7 @@ import {
   withActive,
   type AccountsState,
 } from "./lib/accounts";
-import { cn, Logo, Spinner } from "./ui";
+import { cn, Logo, Spinner, ExtLink } from "./ui";
 import { onHostEvent, inAgentsPoppyContainer } from "./lib/hostBridge";
 import { restoreStartupRegion, savedRegion } from "./lib/region";
 import { autoDiscoverRegion } from "./lib/discovery";
@@ -525,6 +525,16 @@ export function App() {
             </div>
           )}
         </main>
+      {/* Founder rule (2026-08-22), for every first-party poppy: the app is a tool acting in
+          the user's own accounts, provided as-is — its records are theirs to review, and
+          malfunctions or wrong use are not something Olly Digital answers for. */}
+      <p className="shrink-0 border-t border-outline-variant/10 px-6 py-2 text-[11.5px] text-on-surface-variant">
+        MailPoppy runs in your own AWS account and is provided &ldquo;as is&rdquo; under the{" "}
+        <ExtLink href="https://agentspoppy.com/terms" className="underline underline-offset-2">
+          AgentsPoppy Terms
+        </ExtLink>
+        . Your mail and its storage are yours — what you send, and to whom, stays your decision.
+      </p>
     </div>
   );
 }
