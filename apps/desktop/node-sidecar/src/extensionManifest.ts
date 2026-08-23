@@ -44,7 +44,7 @@ export interface ExtensionManifest {
 }
 
 /** The Tauri/extension version — must match src-tauri/tauri.conf.json. */
-const VERSION = "0.1.18";
+const VERSION = "0.1.19";
 
 /**
  * The host-spawned backend, run on AgentsPoppy's SHARED Node runtime (docs/RUNTIMES.md):

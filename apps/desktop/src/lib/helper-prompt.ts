@@ -63,7 +63,7 @@ RULES OF THE PRODUCT — plan within these; never suggest working around them:
 - Receiving mail is only supported in some AWS regions. If I ask for a specific region, say you can't promise it and that MailPoppy shows which region it's using.
 - There is no "Sent" copy kept by the mail service for free, and "unique" per-mailbox storage limits are enforced by bouncing over-quota mail rather than silently dropping it.
 
-ANSWER IN EXACTLY THIS SHAPE:
+ANSWER IN EXACTLY THIS SHAPE (the "…" are placeholders for you to fill in — not missing text):
 1. Before we start: … (the DNS-hosting prerequisite as it applies to me, and whether the domain I named is safe to use — or "nothing blocking")
 2. Domain to enter: …
 3. The two tick boxes: … (leave both on, or which to change and why)
@@ -71,6 +71,8 @@ ANSWER IN EXACTLY THIS SHAPE:
 5. Which mailbox, if any, should be assigned to an AI agent: … or "none"
 6. In what order to do it: … (a short numbered checklist I can follow, including where waiting happens)
 7. What to watch out for: … (the honest short list — spam reputation on a new domain, passwords I can't recover, mail moving away from my current provider)
+
+THE LAST LINE BELOW IS DELIBERATELY UNFINISHED — nothing was cut off. I complete that sentence myself, in my own words, right after pasting this. If I've sent it still unfinished, don't treat this message as truncated: just ask me who needs email addresses on this domain, and what for.
 
 MY MAILBOX SETUP SHOULD: `;
 }

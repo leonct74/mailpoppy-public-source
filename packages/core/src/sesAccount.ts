@@ -54,6 +54,57 @@ export function isSandboxed(s: SesAccountStatus | null | undefined): boolean {
   return state === "sandbox" || state === "pending" || state === "denied";
 }
 
+// ---- Sandbox test-recipient verification ----
+//
+// While the account is in the sandbox, SES only delivers to VERIFIED addresses —
+// so the wizard's "send yourself a test" step fails unless the admin's personal
+// inbox is verified first. Verifying is just creating an SES email-address
+// identity: AWS emails that address a click-link, and the identity flips to
+// verified when it's clicked. These helpers model that flow for the UI.
+
+/** Where a recipient address stands in SES's verification flow. */
+export type RecipientVerificationState =
+  | "verified" // SES will deliver to it, even in the sandbox
+  | "pending" // AWS has emailed the verification link; waiting for the click
+  | "failed" // the link expired unclicked (24h) — re-send to try again
+  | "not-started"; // no SES identity for this address yet
+
+export interface RecipientVerification {
+  email: string;
+  state: RecipientVerificationState;
+}
+
+/**
+ * Collapse SESv2 GetEmailIdentity fields for an EMAIL_ADDRESS identity into one
+ * UI state. `verifiedForSending` is authoritative when true; otherwise the
+ * VerificationStatus enum decides. An existing-but-statusless identity means the
+ * verification email went out, so it reads as pending, not not-started.
+ */
+export function recipientVerificationState(
+  s: { verifiedForSending?: boolean; verificationStatus?: string } | null | undefined,
+): RecipientVerificationState {
+  if (!s) return "not-started";
+  if (s.verifiedForSending) return "verified";
+  const v = (s.verificationStatus ?? "").toUpperCase();
+  if (v === "SUCCESS") return "verified";
+  if (v === "FAILED") return "failed";
+  return "pending"; // PENDING / TEMPORARY_FAILURE / NOT_STARTED / absent
+}
+
+/**
+ * True when a send was rejected because the RECIPIENT isn't verified — the SES
+ * sandbox signature ("Email address is not verified. The following identities
+ * failed the check in region …: you@gmail.com"). The wizard uses this to route
+ * into the verify-your-address flow instead of showing a raw AWS error.
+ */
+export function isUnverifiedRecipientError(message: string): boolean {
+  const m = message.toLowerCase();
+  // "identit" covers both the plural AWS emits today and a singular "identity failed
+  // the check" — the wording is AWS's to change, and missing it dead-ends the user on
+  // a raw error instead of the verify panel, so match the stem rather than the phrase.
+  return m.includes("email address is not verified") || /identit(y|ies) failed the check/.test(m);
+}
+
 // ---- Production-access request ----
 
 export type MailType = "TRANSACTIONAL" | "MARKETING";

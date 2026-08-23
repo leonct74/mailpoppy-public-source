@@ -85,6 +85,8 @@ import {
   type SesAccountStatus,
   type SesReviewStatus,
   type ProductionAccessRequest,
+  recipientVerificationState,
+  type RecipientVerification,
   type MailFromState,
   type MailFromStatus,
   type DnsRecord,
@@ -1035,6 +1037,65 @@ export async function getSesAccount(ctx: AwsContext): Promise<SesAccountStatus> 
         }
       : undefined,
   };
+}
+
+// ---- Sandbox test-recipient verification (DESIGN §13) ----
+//
+// In the sandbox, SES only delivers to VERIFIED addresses — so the wizard's
+// deliverability test fails against the admin's personal inbox unless that
+// address is verified first. Verifying = creating an SES EMAIL_ADDRESS identity:
+// AWS emails the address a click-link. Uses only Create/Get/DeleteEmailIdentity,
+// which MailPoppy already holds (no new permission, no broker re-consent).
+
+/** Read-only: where a recipient address stands in SES's verification flow. */
+export async function getRecipientVerification(ctx: AwsContext, email: string): Promise<RecipientVerification> {
+  const { sesv2 } = clients(ctx);
+  const addr = email.trim().toLowerCase();
+  try {
+    const out = await sesv2.send(new GetEmailIdentityCommand({ EmailIdentity: addr }));
+    return {
+      email: addr,
+      state: recipientVerificationState({
+        verifiedForSending: out.VerifiedForSendingStatus,
+        verificationStatus: out.VerificationStatus,
+      }),
+    };
+  } catch (e) {
+    if ((e as { name?: string }).name === "NotFoundException") return { email: addr, state: "not-started" };
+    throw e;
+  }
+}
+
+/**
+ * Start (or re-send) SES verification for a recipient address — AWS emails it a
+ * click-link. Already-verified is a no-op. An existing UNVERIFIED identity is
+ * deleted + recreated: that's SESv2's only way to re-send the verification email
+ * (lost/expired link), and an unverified email identity carries no config to lose.
+ */
+export async function verifyRecipient(ctx: AwsContext, email: string): Promise<RecipientVerification> {
+  const addr = email.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) throw new Error(`"${email}" is not a valid email address`);
+  const { sesv2 } = clients(ctx);
+  try {
+    await sesv2.send(new CreateEmailIdentityCommand({ EmailIdentity: addr }));
+  } catch (e) {
+    if ((e as { name?: string }).name !== "AlreadyExistsException") throw e;
+    const current = await getRecipientVerification(ctx, addr);
+    if (current.state === "verified") return current;
+    await sesv2.send(new DeleteEmailIdentityCommand({ EmailIdentity: addr }));
+    await sesv2.send(new CreateEmailIdentityCommand({ EmailIdentity: addr }));
+  }
+  await record([
+    {
+      action: "created",
+      service: "SES",
+      resourceType: "EmailIdentity",
+      name: addr,
+      region: ctx.region,
+      detail: "verified recipient for sandbox test sends (AWS emailed a verification link)",
+    },
+  ]);
+  return { email: addr, state: "pending" };
 }
 
 /**
@@ -2264,6 +2325,30 @@ export async function teardownAll(
     } catch (e) {
       if (!/NotFound/i.test((e as Error).name ?? "")) warnings.push(`SES identity ${d}: ${(e as Error).message}`);
     }
+  }
+
+  // 6b. Delete any EMAIL-ADDRESS identities MailPoppy created (verified test
+  //     recipients for sandbox sends — recorded in the ledger, name contains "@").
+  //     Best-effort: skip ones a later ledger entry already marks deleted.
+  try {
+    const entries = await readLedger();
+    const created = new Set<string>();
+    for (const e of entries) {
+      if (e.service !== "SES" || e.resourceType !== "EmailIdentity" || !e.name.includes("@")) continue;
+      if (e.action === "created") created.add(e.name);
+      else if (e.action === "deleted") created.delete(e.name);
+    }
+    for (const addr of created) {
+      try {
+        await sesv2.send(new DeleteEmailIdentityCommand({ EmailIdentity: addr }));
+        deleted.push(`SES verified recipient ${addr}`);
+        ledger.push({ action: "deleted", service: "SES", resourceType: "EmailIdentity", name: addr, region });
+      } catch (e) {
+        if (!/NotFound/i.test((e as Error).name ?? "")) warnings.push(`SES recipient ${addr}: ${(e as Error).message}`);
+      }
+    }
+  } catch (e) {
+    warnings.push(`verified recipients cleanup: ${(e as Error).message}`);
   }
 
   // 7. Remove the DNS records (MX / DMARC / DKIM CNAMEs / amazonses SPF) for

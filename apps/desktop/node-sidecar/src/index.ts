@@ -707,6 +707,30 @@ app.get("/ses/account", async (_req, reply) => {
   }
 });
 
+// Read-only: where a recipient address stands in SES's verification flow
+// (sandbox accounts can only send to verified addresses — the wizard's test step
+// needs to know whether the admin's personal inbox is verified yet).
+app.get("/ses/recipient/:email", async (req, reply) => {
+  const email = (req.params as { email: string }).email;
+  try {
+    return await prov.getRecipientVerification(ctx(), email);
+  } catch (err) {
+    return reply.code(502).send({ ok: false, error: (err as Error).message });
+  }
+});
+
+// Mutating: start (or re-send) SES verification for a recipient address — AWS
+// emails it a click-link. The UI explains what's about to happen first.
+app.post("/ses/recipient/verify", async (req, reply) => {
+  const email = (req.body as { email?: string } | undefined)?.email;
+  if (!email) return reply.code(400).send({ ok: false, error: "email is required" });
+  try {
+    return await prov.verifyRecipient(ctx(), email);
+  } catch (err) {
+    return reply.code(400).send({ ok: false, error: (err as Error).message });
+  }
+});
+
 // Read-only: per-domain "sending health" overview — an account-wide header
 // (paused/quota + the authoritative all-domains SES bounce/complaint totals) plus
 // one row per domain (sends from stored Sent copies, bounces/complaints from the

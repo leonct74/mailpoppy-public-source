@@ -8,6 +8,8 @@ import { saveDeploymentConfig, loadDeploymentConfig, resolveStackName, DEFAULT_S
 import { MailboxStorageRow } from "./MailboxStorageRow";
 import { AppAccessDriftNotice } from "./AppAccessDriftNotice";
 import { MailFromSetup } from "./MailFromSetup";
+import { RecipientVerify } from "./RecipientVerify";
+import { isUnverifiedRecipientError } from "@mailpoppy/core";
 import { RegionPicker } from "./RegionPicker";
 import { AwsOnboarding } from "./AwsOnboarding";
 import { friendlyError } from "../lib/errors";
@@ -160,6 +162,9 @@ export function SetupWizard({
   const [provision, setProvision] = useState<ProvisionResult | null>(null);
   const [status, setStatus] = useState<IdentityStatus | null>(null);
   const [messageId, setMessageId] = useState<string | null>(null);
+  // A test send bounced off the SES sandbox ("recipient not verified") — force
+  // the verify-your-address panel visible even if the account state can't be read.
+  const [testUnverified, setTestUnverified] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
@@ -416,7 +421,19 @@ export function SetupWizard({
       setMessageId(r.messageId);
       setStep("sent");
     } catch (e) {
-      fail(e, "verified");
+      // The SES-sandbox rejection ("recipient not verified") is a guided flow,
+      // not an error dead-end: surface the in-app verify panel with a plain
+      // explanation instead of the raw AWS message.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (isUnverifiedRecipientError(msg)) {
+        setTestUnverified(true);
+        setError(
+          `AWS wouldn't deliver to ${to} yet: your AWS account is still in the SES sandbox, which only sends to addresses verified with AWS. Verify your address below (takes a minute), then send the test again.`,
+        );
+        setStep("verified");
+      } else {
+        fail(e, "verified");
+      }
     } finally {
       setBusy(false);
     }
@@ -960,6 +977,10 @@ export function SetupWizard({
                 <Mail className="size-4" /> {step === "sent" ? "Send another test" : "Send a test email"}
               </Button>
             </div>
+            {/* SES-sandbox helper: verify the typed address with AWS in-app (a new
+                AWS account only delivers to verified addresses). Renders nothing
+                once the account has production access. */}
+            <RecipientVerify recipient={recipient} domain={domain} forceSandbox={testUnverified} />
           </div>
         )}
 

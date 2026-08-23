@@ -3,6 +3,8 @@ import {
   sendingAccessState,
   isSandboxed,
   validateProductionAccessRequest,
+  recipientVerificationState,
+  isUnverifiedRecipientError,
   MIN_USE_CASE_CHARS,
   type SesAccountStatus,
   type ProductionAccessRequest,
@@ -82,5 +84,47 @@ describe("validateProductionAccessRequest", () => {
     const problems = validateProductionAccessRequest({ ...ok, additionalContactEmails: ["good@x.com", "nope"] });
     expect(problems.some((p) => /not a valid email/i.test(p))).toBe(true);
     expect(validateProductionAccessRequest({ ...ok, additionalContactEmails: ["a@b.com"] })).toEqual([]);
+  });
+});
+
+describe("recipientVerificationState", () => {
+  it("is not-started with no identity data", () => {
+    expect(recipientVerificationState(null)).toBe("not-started");
+    expect(recipientVerificationState(undefined)).toBe("not-started");
+  });
+
+  it("is verified when SES says verified-for-sending, regardless of the enum", () => {
+    expect(recipientVerificationState({ verifiedForSending: true })).toBe("verified");
+    expect(recipientVerificationState({ verifiedForSending: true, verificationStatus: "PENDING" })).toBe("verified");
+    expect(recipientVerificationState({ verifiedForSending: false, verificationStatus: "SUCCESS" })).toBe("verified");
+  });
+
+  it("is failed only on a FAILED verification (expired unclicked link)", () => {
+    expect(recipientVerificationState({ verifiedForSending: false, verificationStatus: "FAILED" })).toBe("failed");
+  });
+
+  it("reads an existing unverified identity as pending (the email went out)", () => {
+    expect(recipientVerificationState({ verifiedForSending: false, verificationStatus: "PENDING" })).toBe("pending");
+    expect(recipientVerificationState({ verifiedForSending: false, verificationStatus: "TEMPORARY_FAILURE" })).toBe("pending");
+    expect(recipientVerificationState({ verifiedForSending: false })).toBe("pending");
+  });
+});
+
+describe("isUnverifiedRecipientError", () => {
+  it("matches the SES sandbox rejection message", () => {
+    expect(
+      isUnverifiedRecipientError(
+        "MessageRejected: Email address is not verified. The following identities failed the check in region EU-WEST-1: you@gmail.com",
+      ),
+    ).toBe(true);
+    expect(isUnverifiedRecipientError("The following identities failed the check in region US-EAST-1: a@b.com")).toBe(true);
+    // Singular too: a missed match dead-ends the user on the raw AWS error instead of
+    // the verify panel, and the exact wording is AWS's to change, not ours.
+    expect(isUnverifiedRecipientError("The following identity failed the check in region eu-west-1: a@b.com")).toBe(true);
+  });
+
+  it("does not match unrelated errors", () => {
+    expect(isUnverifiedRecipientError("Daily message quota exceeded")).toBe(false);
+    expect(isUnverifiedRecipientError("AccessDenied: not authorized to perform ses:SendEmail")).toBe(false);
   });
 });

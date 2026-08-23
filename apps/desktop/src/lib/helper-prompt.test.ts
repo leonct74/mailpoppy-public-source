@@ -98,7 +98,15 @@ describe("the helper prompt", () => {
     expect(p).toMatch(/ANSWER IN EXACTLY THIS SHAPE/);
   });
 
-  it("ends mid-sentence so the user's next words are the goal", () => {
-    expect(buildHelperPrompt().endsWith("MY MAILBOX SETUP SHOULD: ")).toBe(true);
+  // The tail is a deliberate fill-in-the-blank (the user's next words are the goal) —
+  // but field feedback (2026-08-22) showed that without an explanation, both the user
+  // and the receiving AI read the unfinished sentence as a truncated/incomplete prompt.
+  // So the cloze stays, and the line above it must say so explicitly.
+  it("ends mid-sentence so the user's next words are the goal — and says that's deliberate", () => {
+    const p = buildHelperPrompt();
+    expect(p.endsWith("MY MAILBOX SETUP SHOULD: ")).toBe(true);
+    expect(p).toMatch(/DELIBERATELY UNFINISHED — nothing was cut off/);
+    expect(p).toMatch(/don't treat this message as truncated/);
+    expect(p).toMatch(/placeholders for you to fill in — not missing text/);
   });
 });

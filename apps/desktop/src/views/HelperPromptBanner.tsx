@@ -38,8 +38,8 @@ export function HelperPromptBanner({ domain, region }: { domain?: string; region
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="max-w-xl text-sm leading-relaxed text-on-surface-variant">
           <b className="text-on-surface">New to setting up email?</b> Copy the helper prompt, paste it into any AI
-          you already use (Claude, ChatGPT…), and tell it who needs email addresses — it answers with the domain to
-          enter, the mailboxes to create, and what to watch out for.
+          you already use (Claude, ChatGPT…), and finish its last sentence with who needs email addresses — it answers
+          with the domain to enter, the mailboxes to create, and what to watch out for.
         </p>
         <Button size="sm" onClick={() => void copy()} className={used ? undefined : "poppy-helper-pulse"}>
           {copied ? (
