@@ -17,7 +17,7 @@ import { writeMailpoppyProfile, mailpoppyProfileExists, MAILPOPPY_PROFILE } from
 import { checkCapabilities } from "./capabilities";
 import { beginBrokerConnect, refreshBrokerStatus, disconnectBroker, brokerRegion, brokerPort, brokerDataDir, isContainerMode } from "./agentspoppyBroker";
 import { initStorage } from "./storage";
-import { SES_INBOUND_REGIONS } from "@mailpoppy/core";
+import { SES_INBOUND_REGIONS, productionAccessErrorMessage } from "@mailpoppy/core";
 
 // 25 MiB body limit (Fastify defaults to 1 MiB): the bulk-mailbox importer POSTs
 // the chosen spreadsheet as base64 JSON, and base64 inflates the bytes by ~33%.
@@ -752,7 +752,11 @@ app.post("/ses/production-access", async (req, reply) => {
   try {
     return await prov.requestProductionAccess(ctx(), b as unknown as Parameters<typeof prov.requestProductionAccess>[1]);
   } catch (err) {
-    return reply.code(400).send({ ok: false, error: (err as Error).message });
+    // Both our own validation failures and AWS's rejections land here. Map them to
+    // something actionable — a bare or empty SDK error reaching the UI reads as a dead
+    // button on a control that opens a real AWS support case (field report 2026-08-23).
+    const e = err as Error;
+    return reply.code(400).send({ ok: false, error: productionAccessErrorMessage(e?.name, e?.message) });
   }
 });
 

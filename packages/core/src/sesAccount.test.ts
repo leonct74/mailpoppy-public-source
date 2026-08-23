@@ -5,6 +5,7 @@ import {
   validateProductionAccessRequest,
   recipientVerificationState,
   isUnverifiedRecipientError,
+  productionAccessErrorMessage,
   MIN_USE_CASE_CHARS,
   type SesAccountStatus,
   type ProductionAccessRequest,
@@ -126,5 +127,40 @@ describe("isUnverifiedRecipientError", () => {
   it("does not match unrelated errors", () => {
     expect(isUnverifiedRecipientError("Daily message quota exceeded")).toBe(false);
     expect(isUnverifiedRecipientError("AccessDenied: not authorized to perform ses:SendEmail")).toBe(false);
+  });
+});
+
+// A failed production-access request used to surface as a bare exception name — or
+// nothing at all ("unknown error"), which reads as a broken button on a control that
+// opens a real AWS support case (field report 2026-08-23).
+describe("productionAccessErrorMessage", () => {
+  it("explains an authorization failure and where to fix it", () => {
+    const msg = productionAccessErrorMessage(
+      "AccessDeniedException",
+      "User: arn:aws:sts::1:assumed-role/x is not authorized to perform: ses:PutAccountDetails",
+    );
+    expect(msg).toMatch(/isn't allowed to submit it/);
+    expect(msg).toMatch(/AgentsPoppy/);
+  });
+
+  it("explains that a request is already open rather than repeating it", () => {
+    expect(productionAccessErrorMessage("ConflictException", "Request already submitted")).toMatch(
+      /already has a production-access request open/,
+    );
+  });
+
+  it("passes AWS's own validation complaint through", () => {
+    expect(productionAccessErrorMessage("BadRequestException", "WebsiteURL is invalid")).toMatch(/WebsiteURL is invalid/);
+  });
+
+  it("never returns an empty string, whatever it is handed", () => {
+    for (const [n, m] of [["", ""], [undefined, undefined], ["  ", "  "]] as [string?, string?][]) {
+      expect(productionAccessErrorMessage(n, m).trim().length).toBeGreaterThan(0);
+    }
+    expect(productionAccessErrorMessage("", "")).toMatch(/didn't say why/);
+  });
+
+  it("keeps an unrecognised AWS message visible, with its type", () => {
+    expect(productionAccessErrorMessage("WeirdException", "something odd")).toBe("something odd (WeirdException)");
   });
 });

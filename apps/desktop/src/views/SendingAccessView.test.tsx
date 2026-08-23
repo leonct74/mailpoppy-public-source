@@ -72,3 +72,57 @@ describe("SendingAccessView", () => {
     expect(await screen.findByText(/AWS is reviewing/i)).toBeInTheDocument();
   });
 });
+
+// Field report 2026-08-23: "the button seems not to be sending anything and displays
+// unknown error". Two defects in one: a rejected submit rendered its message only at
+// the very bottom of a long form (invisible next to the button), and an opaque AWS
+// failure reached the user as bare text. The message must appear AT the button.
+describe("a rejected production-access request", () => {
+  const fill = async () => {
+    fireEvent.change(screen.getByLabelText(/website/i), { target: { value: "https://ollydigital.com" } });
+    fireEvent.change(screen.getByLabelText(/use case|describe/i), {
+      target: { value: "Hosting our own company email for staff on ollydigital.com — normal correspondence." },
+    });
+  };
+
+  it("shows AWS's reason next to the Submit button, not only at the foot of the form", async () => {
+    const submit = vi.fn(async () => {
+      throw new Error("AWS already has a production-access request open for this account.");
+    });
+    render(<SendingAccessView defaultWebsite="ollydigital.com" load={async () => sandbox} submit={submit} />);
+    await screen.findByText(/in the sandbox/i);
+    await fill();
+
+    fireEvent.click(screen.getByRole("button", { name: /Request production access/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Submit to AWS/i }));
+
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/already has a production-access request open/i);
+
+    // It must live inside the confirmation box — the thing the user is looking at —
+    // rather than only after the whole form.
+    const submitBtn = screen.getByRole("button", { name: /Submit to AWS/i });
+    const box = submitBtn.closest("div")?.parentElement;
+    expect(box?.contains(alert)).toBe(true);
+  });
+
+  it("leaves the user able to retry after a failure", async () => {
+    const submit = vi.fn(async () => {
+      throw new Error("AWS is rate-limiting this request.");
+    });
+    render(<SendingAccessView defaultWebsite="ollydigital.com" load={async () => sandbox} submit={submit} />);
+    await screen.findByText(/in the sandbox/i);
+    await fill();
+
+    fireEvent.click(screen.getByRole("button", { name: /Request production access/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Submit to AWS/i }));
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+
+    // Still clickable (not stuck on "Submitting…"), so a transient failure is retryable.
+    const btn = await screen.findByRole("button", { name: /Submit to AWS/i });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
+  });
+});

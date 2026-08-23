@@ -272,13 +272,23 @@ export function SendingAccessView({ defaultWebsite, load, submit }: SendingAcces
                     Cancel
                   </Button>
                 </div>
+                {/* The failure has to be readable RIGHT HERE. It used to render only at
+                    the very bottom of the section, far below the fold on this long form,
+                    so a rejected submit looked like a button that did nothing at all
+                    (field report 2026-08-23). */}
+                {err && (
+                  <p role="alert" className="mt-2 text-sm text-tertiary">
+                    {err}
+                  </p>
+                )}
               </Banner>
             </div>
           )}
         </div>
       )}
 
-      {err && <p className="mt-2 text-sm text-tertiary">{err}</p>}
+      {/* Errors from LOADING the account (no confirm box on screen to host them). */}
+      {err && !confirming && <p role="alert" className="mt-2 text-sm text-tertiary">{err}</p>}
     </section>
   );
 }

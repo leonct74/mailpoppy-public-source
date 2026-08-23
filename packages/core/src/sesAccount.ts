@@ -105,6 +105,50 @@ export function isUnverifiedRecipientError(message: string): boolean {
   return m.includes("email address is not verified") || /identit(y|ies) failed the check/.test(m);
 }
 
+/**
+ * Turn a failed PutAccountDetails into something the admin can act on.
+ *
+ * The request opens a real AWS Support case, and its failures are all things the
+ * admin can understand and fix — but the SDK surfaces them as bare exception names
+ * (and occasionally an empty message, which reaches the user as "unknown error").
+ * Never return an empty string: an opaque failure on a button that opens a support
+ * case reads as "the button is broken" (field report 2026-08-23).
+ */
+export function productionAccessErrorMessage(name?: string, message?: string): string {
+  const n = (name ?? "").trim();
+  const m = (message ?? "").trim();
+  const hay = `${n} ${m}`.toLowerCase();
+
+  if (/accessdenied|not authorized|unauthorizedoperation/.test(hay)) {
+    return (
+      "AWS refused the request because this connection isn't allowed to submit it " +
+      "(ses:PutAccountDetails). If you're running MailPoppy through AgentsPoppy, open " +
+      "AgentsPoppy and check MailPoppy's connection is active and its access was approved, " +
+      "then try again."
+    );
+  }
+  if (/conflict|already|inprogress|in progress/.test(hay)) {
+    return (
+      "AWS already has a production-access request open for this account, so it won't accept " +
+      "another one. Check its progress in the AWS Support Center — this panel will show " +
+      "\"granted\" once AWS approves it."
+    );
+  }
+  if (/throttl|toomanyrequests|limitexceeded/.test(hay)) {
+    return "AWS is rate-limiting this request. Wait a minute and try again.";
+  }
+  if (/badrequest|validation/.test(hay)) {
+    return m
+      ? `AWS rejected the details: ${m}`
+      : "AWS rejected the details in this request. Check the website address and the description, then try again.";
+  }
+  // Unknown: show whatever AWS actually said, and never nothing at all.
+  // Naming the exception type helps only when it IS a type — our own validation
+  // errors are plain `Error`, and "(Error)" is noise on an already-clear sentence.
+  if (m && n && n !== "Error") return `${m} (${n})`;
+  return m || n || "AWS didn't say why the request failed. Please try again, and report this if it keeps happening.";
+}
+
 // ---- Production-access request ----
 
 export type MailType = "TRANSACTIONAL" | "MARKETING";
