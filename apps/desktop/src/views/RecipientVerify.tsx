@@ -60,6 +60,16 @@ export function RecipientVerify({ recipient, domain, forceSandbox, onVerified, l
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const pollRef = useRef<number | null>(null);
+  // Bumped whenever something makes the address newly pending (i.e. the user just
+  // asked AWS for a link). The poll effect depends on it, so the waiting loop is
+  // (re)armed at that moment — see the comment on the effect below.
+  const [resumeKey, setResumeKey] = useState(0);
+  // Mirrors "are we waiting for the click?" for the error path, which has no
+  // fresh status to consult.
+  const pendingRef = useRef(false);
+  // True for the one effect run triggered by sending a verification email, so that
+  // run waits an interval instead of immediately re-reading what it already knows.
+  const justSentRef = useRef(false);
 
   const email = recipient.trim().toLowerCase();
   const emailValid = !!email && validateTestRecipient(email, domain) === null;
@@ -88,23 +98,47 @@ export function RecipientVerify({ recipient, domain, forceSandbox, onVerified, l
     if (!show || !emailValid) return;
     let cancelled = false;
     async function poll() {
+      let keepWaiting = false;
       try {
         const s = await checkFn(email);
         if (cancelled) return;
-        setStatus(s);
-        onVerified?.(s.state === "verified");
-        if (s.state === "pending") pollRef.current = window.setTimeout(poll, 5000);
+        // SES is eventually consistent: a read landing moments after
+        // CreateEmailIdentity can still answer "no such identity". Never let that
+        // downgrade a known-pending address back to not-started — it would yank the
+        // "check your inbox" banner away mid-wait and re-offer the Verify button.
+        if (!(s.state === "not-started" && pendingRef.current)) {
+          setStatus(s);
+          pendingRef.current = s.state === "pending";
+          onVerified?.(s.state === "verified");
+        }
+        keepWaiting = pendingRef.current;
       } catch {
-        // transient — leave the last known state
+        // Transient (offline, a broker hiccup on the proxied read). Keep the loop
+        // alive while we're still waiting for the click — dropping it here would
+        // strand the user on a spinner that can never update again.
+        keepWaiting = pendingRef.current;
       }
+      if (!cancelled && keepWaiting) pollRef.current = window.setTimeout(poll, 5000);
     }
-    void poll();
+    // A run triggered by sending the email already knows the answer (pending), so it
+    // waits a beat rather than racing AWS with a read that can only contradict it.
+    if (justSentRef.current) {
+      justSentRef.current = false;
+      pollRef.current = window.setTimeout(poll, 5000);
+    } else {
+      void poll();
+    }
     return () => {
       cancelled = true;
       if (pollRef.current) window.clearTimeout(pollRef.current);
     };
+    // `resumeKey` is what makes the panel keep its promise ("updates by itself").
+    // On the normal path the FIRST check returns not-started (no identity exists
+    // yet), so no timer is armed; sendVerification then flips the address to
+    // pending, and only a dep change restarts the loop. Without it the panel
+    // spins forever after the user clicks the AWS link (field bug 2026-08-23).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show, email, emailValid]);
+  }, [show, email, emailValid, resumeKey]);
 
   async function sendVerification() {
     setErr(null);
@@ -112,7 +146,14 @@ export function RecipientVerify({ recipient, domain, forceSandbox, onVerified, l
     try {
       const s = await verifyFn(email);
       setStatus(s);
+      pendingRef.current = s.state === "pending";
       onVerified?.(s.state === "verified");
+      // Start (or restart) the waiting loop — the effect above only re-runs when
+      // one of its deps changes, and nothing else here changes one.
+      if (s.state === "pending") {
+        justSentRef.current = true;
+        setResumeKey((n) => n + 1);
+      }
     } catch (e) {
       setErr(friendlyError(e));
     } finally {

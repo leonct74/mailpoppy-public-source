@@ -50,6 +50,7 @@ import {
   mailboxKeysKey,
   isMailboxKeyRecord,
   type MailboxKeyRecord,
+  isUnverifiedRecipientError,
 } from "@mailpoppy/core";
 
 /**
@@ -67,6 +68,35 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
 });
 const s3 = new S3Client({});
 const ses = new SESv2Client({});
+
+/**
+ * A send SES refused for a reason the USER can fix — today: the account is still
+ * in Amazon's sending sandbox, so it only delivers to addresses verified with
+ * AWS. That is a normal setup state, not a server fault, so it must never fall
+ * through to the generic 500 ("The mail server ran into a problem…") which tells
+ * the user nothing and reads like an outage. Field report 2026-08-23: an admin
+ * waiting on AWS production approval saw exactly that on every send.
+ */
+class SendRejected extends Error {}
+
+/** Send through SES, translating a user-fixable rejection into {@link SendRejected}. */
+async function sesSend(cmd: SendEmailCommand): Promise<{ MessageId?: string }> {
+  try {
+    return await ses.send(cmd);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isUnverifiedRecipientError(msg)) {
+      throw new SendRejected(
+        "Your message wasn't sent. Amazon still has this AWS account in its sending " +
+          "sandbox, so it only delivers to addresses that have been verified with AWS. " +
+          "Once Amazon approves production access you can write to anyone; until then, " +
+          "verify a recipient (or check the request's progress) in MailPoppy's setup " +
+          "under Sending access.",
+      );
+    }
+    throw err;
+  }
+}
 
 const INDEX_TABLE = process.env.INDEX_TABLE ?? "";
 const SETTINGS_TABLE = process.env.SETTINGS_TABLE ?? "";
@@ -566,7 +596,7 @@ async function sendMessage(owned: string[], body: SendBody): Promise<APIGatewayP
       references: body.references,
       attachments: decoded.map((a) => ({ filename: a.filename, contentType: a.contentType, bytes: a.bytes })),
     });
-    const sent = await ses.send(
+    const sent = await sesSend(
       new SendEmailCommand({
         FromEmailAddress: from,
         Destination: destination,
@@ -579,7 +609,7 @@ async function sendMessage(owned: string[], body: SendBody): Promise<APIGatewayP
     const headers: MessageHeader[] = [];
     if (body.inReplyTo) headers.push({ Name: "In-Reply-To", Value: body.inReplyTo });
     if (body.references) headers.push({ Name: "References", Value: body.references });
-    const sent = await ses.send(
+    const sent = await sesSend(
       new SendEmailCommand({
         FromEmailAddress: from,
         Destination: destination,
@@ -981,6 +1011,10 @@ export async function handler(
         return json(404, { error: `no route for ${route}` });
     }
   } catch (err) {
+    // A user-fixable send rejection is not a server error: return the explanation
+    // itself. friendlyApiMessage() renders body.error verbatim for 403, so every
+    // client (desktop, mobile, webmail) shows it without a client-side change.
+    if (err instanceof SendRejected) return json(403, { error: err.message });
     console.error("access-api error", route, err);
     return json(500, { error: "internal error" });
   }

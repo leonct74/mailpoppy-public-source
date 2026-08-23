@@ -68,6 +68,8 @@ import {
 import {
   mailboxPk,
   addressDomain,
+  liveDomainIdentities,
+  liveRecipientIdentities,
   quotaSettingsKey,
   agentOwnedSettingsKey,
   validateProductionAccessRequest,
@@ -2013,16 +2015,14 @@ export async function discoverProvisionedDomains(ctx: AwsContext, stackName: str
   // and then deleted has both entries; replaying add/remove in order leaves only
   // the identities that still exist. (Without this, a torn-down domain lingers
   // forever as a ghost — e.g. shows up on the Home dashboard after teardown.)
+  // liveDomainIdentities deliberately EXCLUDES email-address identities: those are
+  // verified test recipients (verifyRecipient), not domains we host. Passing one to
+  // add() would reduce it to its domain and claim a domain the admin doesn't own —
+  // verifying a personal you@gmail.com published a phantom "gmail.com" domain onto
+  // the dashboard AND into teardown's DNS cleanup list (field bug 2026-08-23, shipped
+  // in 0.1.19). The rule is unit-tested in core so it can't drift back.
   try {
-    const liveIdentities = new Set<string>();
-    for (const e of await readLedger()) {
-      if (e.service !== "SES" || e.resourceType !== "EmailIdentity") continue;
-      const name = (e.name ?? "").trim().toLowerCase();
-      if (!name) continue;
-      if (e.action === "created") liveIdentities.add(name);
-      else if (e.action === "deleted") liveIdentities.delete(name);
-    }
-    for (const name of liveIdentities) add(name);
+    for (const name of liveDomainIdentities(await readLedger())) add(name);
   } catch {
     // missing/corrupt ledger — ignore
   }
@@ -2331,14 +2331,7 @@ export async function teardownAll(
   //     recipients for sandbox sends — recorded in the ledger, name contains "@").
   //     Best-effort: skip ones a later ledger entry already marks deleted.
   try {
-    const entries = await readLedger();
-    const created = new Set<string>();
-    for (const e of entries) {
-      if (e.service !== "SES" || e.resourceType !== "EmailIdentity" || !e.name.includes("@")) continue;
-      if (e.action === "created") created.add(e.name);
-      else if (e.action === "deleted") created.delete(e.name);
-    }
-    for (const addr of created) {
+    for (const addr of liveRecipientIdentities(await readLedger())) {
       try {
         await sesv2.send(new DeleteEmailIdentityCommand({ EmailIdentity: addr }));
         deleted.push(`SES verified recipient ${addr}`);
