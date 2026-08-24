@@ -327,7 +327,18 @@ app.post("/provision/:domain", async (req) => {
     dkimTokens,
     dmarcRua: `postmaster@${domain}`,
   });
-  return { ok: true, domain, zoneId, dkimTokens, changeId };
+  // Point this domain's bounce/complaint notifications at the stack's SNS topic, so the
+  // suppression Lambda actually receives them. Best-effort: the domain is fully usable
+  // without it (bounces still go to SES's default email feedback), and the backend may not
+  // be deployed yet on a first run — re-running the wizard wires it once the stack exists.
+  let feedback: { ok: boolean; reason?: string } = { ok: false, reason: "not attempted" };
+  try {
+    feedback = await prov.wireFeedbackNotifications(c, domain);
+  } catch (err) {
+    app.log.warn({ err }, "could not wire feedback notifications");
+    feedback = { ok: false, reason: (err as Error).message };
+  }
+  return { ok: true, domain, zoneId, dkimTokens, changeId, feedback };
 });
 
 // Read-only: the resource transparency inventory (DESIGN §14.1) — the deployed
@@ -735,6 +746,18 @@ app.post("/ses/recipient/verify", async (req, reply) => {
 // (paused/quota + the authoritative all-domains SES bounce/complaint totals) plus
 // one row per domain (sends from stored Sent copies, bounces/complaints from the
 // STAT# counters, and the do-not-send count attributed to that domain).
+// Clear one address from the do-not-send list (admin). The send path REFUSES suppressed
+// recipients, so without this an address stays blocked forever after a single hard bounce.
+app.post("/ses/suppression/clear", async (req, reply) => {
+  const b = (req.body ?? {}) as { stackName?: string; address?: string };
+  if (!b.address) return reply.code(400).send({ ok: false, error: "an address is required" });
+  try {
+    return await prov.unsuppressAddress(ctx(), b.stackName ?? "MailpoppyMailStack", b.address);
+  } catch (err) {
+    return reply.code(400).send({ ok: false, error: (err as Error).message });
+  }
+});
+
 app.get("/ses/deliverability/:stackName", async (req, reply) => {
   const { stackName } = req.params as { stackName: string };
   try {

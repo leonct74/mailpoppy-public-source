@@ -7,8 +7,9 @@ import {
   type DomainDeliverability,
   type DomainDmarc,
   type HealthLevel,
+  type SuppressedAddress,
 } from "@mailpoppy/core";
-import { getDeliverabilityOverview as defaultLoad } from "../lib/deliverability";
+import { getDeliverabilityOverview as defaultLoad, clearSuppression as defaultClearSuppression } from "../lib/deliverability";
 import { resolveStackName } from "../lib/deploymentConfig";
 import { DeliverabilityGuide } from "./DeliverabilityGuide";
 import { Card, Button, Spinner, cn } from "../ui";
@@ -147,12 +148,81 @@ function DomainCard({ d }: { d: DomainDeliverability }) {
   );
 }
 
+/** The do-not-send list with a per-address "Allow again". */
+function SuppressionList({
+  addresses,
+  stackName,
+  onCleared,
+  clear,
+}: {
+  addresses: SuppressedAddress[];
+  stackName: string;
+  onCleared: () => void;
+  clear: (stackName: string, address: string) => Promise<unknown>;
+}) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function allow(address: string) {
+    setBusy(address);
+    setErr(null);
+    try {
+      await clear(stackName, address);
+      onCleared();
+    } catch (e) {
+      setErr(friendlyError(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card>
+      <div className="flex items-center gap-2">
+        <Ban className="size-4 text-on-surface-variant" />
+        <h3 className="font-semibold text-on-surface">Addresses we&apos;ve stopped emailing</h3>
+      </div>
+      <p className="mt-1 text-sm text-on-surface-variant">
+        Mail to these bounced repeatedly or was reported as spam, so MailPoppy refuses to send to them — continuing to
+        try is what gets an AWS account throttled. If an address has been fixed, allow it again here.
+      </p>
+      <ul className="mt-3 flex flex-col gap-1.5">
+        {addresses.map((a) => (
+          <li
+            key={a.address}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3 py-2"
+          >
+            <div className="min-w-0">
+              <div className="truncate font-mono text-sm text-on-surface">{a.address}</div>
+              <div className="text-xs text-on-surface-variant">
+                {a.reason === "complaint" ? "reported as spam" : "kept bouncing"}
+                {a.detail ? ` · ${a.detail}` : ""}
+                {a.suppressedAt ? ` · ${new Date(a.suppressedAt).toLocaleDateString()}` : ""}
+              </div>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => void allow(a.address)} disabled={busy === a.address}>
+              {busy === a.address ? <Spinner /> : null} Allow again
+            </Button>
+          </li>
+        ))}
+      </ul>
+      {err && <p className="mt-2 text-sm text-tertiary">{err}</p>}
+    </Card>
+  );
+}
+
 export interface SendingHealthViewProps {
   stackName?: string;
   load?: (stackName: string) => Promise<DeliverabilityOverview>;
+  /** Injectable for tests — clears one address from the do-not-send list. */
+  clearSuppression?: (stackName: string, address: string) => Promise<unknown>;
 }
 
-export function SendingHealthView({ stackName = resolveStackName(), load = defaultLoad }: SendingHealthViewProps) {
+export function SendingHealthView({
+  stackName = resolveStackName(),
+  load = defaultLoad,
+  clearSuppression = defaultClearSuppression,
+}: SendingHealthViewProps) {
   const [data, setData] = useState<DeliverabilityOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -255,6 +325,20 @@ export function SendingHealthView({ stackName = resolveStackName(), load = defau
                 </div>
               </div>
             </Card>
+          )}
+
+          {/* The do-not-send list, with a way OUT of it. The send path refuses these
+              addresses (repeatedly mailing bounces/complainers is what gets an AWS
+              account throttled), so an address that has since been fixed needs an
+              admin able to clear it — otherwise one bad day blocks a colleague
+              forever. Admin-only by design: it's a deliverability control. */}
+          {account.suppressed.length > 0 && (
+            <SuppressionList
+              addresses={account.suppressed}
+              stackName={stackName}
+              onCleared={() => void refresh()}
+              clear={clearSuppression}
+            />
           )}
 
           {/* Per-domain list. */}

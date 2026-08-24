@@ -4,13 +4,17 @@
     {
       "Sid": "Identity",
       "Effect": "Allow",
-      "Action": ["sts:GetCallerIdentity"],
+      "Action": [
+        "sts:GetCallerIdentity"
+      ],
       "Resource": "*"
     },
     {
       "Sid": "CapabilityCheck",
       "Effect": "Allow",
-      "Action": ["iam:SimulatePrincipalPolicy"],
+      "Action": [
+        "iam:SimulatePrincipalPolicy"
+      ],
       "Resource": "*"
     },
     {
@@ -39,14 +43,19 @@
         "ses:CreateReceiptRuleSet",
         "ses:CreateReceiptRule",
         "ses:DescribeActiveReceiptRuleSet",
-        "ses:SetActiveReceiptRuleSet"
+        "ses:SetActiveReceiptRuleSet",
+        "ses:SetIdentityNotificationTopic",
+        "ses:SetIdentityHeadersInNotificationsEnabled",
+        "ses:DeleteSuppressedDestination"
       ],
       "Resource": "*"
     },
     {
       "Sid": "S3ListForReadiness",
       "Effect": "Allow",
-      "Action": ["s3:ListAllMyBuckets"],
+      "Action": [
+        "s3:ListAllMyBuckets"
+      ],
       "Resource": "*"
     },
     {
@@ -75,19 +84,28 @@
     {
       "Sid": "S3MailpoppyObjects",
       "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
       "Resource": "arn:aws:s3:::mailpoppy-*/*"
     },
     {
       "Sid": "StackBucket",
       "Effect": "Allow",
-      "Action": ["s3:ListBucket", "s3:DeleteBucket"],
+      "Action": [
+        "s3:ListBucket",
+        "s3:DeleteBucket"
+      ],
       "Resource": "arn:aws:s3:::mailpoppymailstack-*"
     },
     {
       "Sid": "StackObjects",
       "Effect": "Allow",
-      "Action": ["s3:PutObject", "s3:DeleteObject"],
+      "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
       "Resource": "arn:aws:s3:::mailpoppymailstack-*/*"
     },
     {

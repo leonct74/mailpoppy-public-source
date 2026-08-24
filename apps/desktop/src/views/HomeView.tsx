@@ -33,6 +33,7 @@ import { REGION_CHANGED_EVENT } from "../lib/region";
 import { getDomainIdentityStatus as defaultGetDomainStatus, type DomainIdentityStatus } from "../lib/provision";
 import { checkHubDomain as defaultCheckHub, activationUrl, type HubDomainStatus } from "../lib/hubAccount";
 import { openExternal as defaultOpenExternal } from "../lib/openExternal";
+import { SandboxNotice } from "./SandboxNotice";
 import { Card, Button, Spinner, cn } from "../ui";
 
 // Home — a multi-domain overview. A MailPoppy admin typically runs several
@@ -231,6 +232,9 @@ export function HomeView({
   if (phase === "no-backend") {
     return (
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
+        {/* The AWS constraint that decides whether MailPoppy is usable at all, stated
+            BEFORE an hour of setup rather than after. */}
+        <SandboxNotice />
         <Card className="text-center">
           <Sparkles className="mx-auto size-8 text-primary" />
           <h2 className="mt-3 text-xl font-semibold text-on-surface">Welcome to MailPoppy</h2>

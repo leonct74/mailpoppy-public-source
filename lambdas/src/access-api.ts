@@ -19,6 +19,7 @@ import {
   PutCommand,
   DeleteCommand,
   GetCommand,
+  BatchGetCommand,
 } from "@aws-sdk/lib-dynamodb";
 import { SESv2Client, SendEmailCommand, type MessageHeader } from "@aws-sdk/client-sesv2";
 import { randomUUID } from "node:crypto";
@@ -51,6 +52,10 @@ import {
   isMailboxKeyRecord,
   type MailboxKeyRecord,
   isUnverifiedRecipientError,
+  suppressionKey,
+  splitSuppressedRecipients,
+  suppressedRecipientsMessage,
+  type SuppressionRecord,
 } from "@mailpoppy/core";
 
 /**
@@ -95,6 +100,40 @@ async function sesSend(cmd: SendEmailCommand): Promise<{ MessageId?: string }> {
       );
     }
     throw err;
+  }
+}
+
+/**
+ * The suppressed subset of these recipients (hard bounces + spam complaints, recorded by
+ * the suppression Lambda).
+ *
+ * FAIL-OPEN on purpose: if the settings table can't be read, we send. One message to a
+ * suppressed address is a small deliverability cost; refusing every send because a lookup
+ * blipped would take the user's mail down entirely. Same posture as loadSpamPolicy.
+ */
+async function loadSuppressed(recipients: string[]): Promise<SuppressionRecord[]> {
+  const unique = [...new Set(recipients.map((r) => normalizeAddress(r)).filter(Boolean))];
+  if (!SETTINGS_TABLE || unique.length === 0) return [];
+  try {
+    const found: SuppressionRecord[] = [];
+    // BatchGet caps at 100 keys per call; a send has far fewer, but chunk anyway so a
+    // large Bcc can never throw ValidationException and take the send down with it.
+    for (let i = 0; i < unique.length; i += 100) {
+      const chunk = unique.slice(i, i + 100);
+      const out = await ddb.send(
+        new BatchGetCommand({
+          RequestItems: { [SETTINGS_TABLE]: { Keys: chunk.map((a) => ({ pk: suppressionKey(a) })) } },
+        }),
+      );
+      for (const row of out.Responses?.[SETTINGS_TABLE] ?? []) {
+        const r = row as { address?: string; reason?: string; detail?: string; suppressedAt?: string };
+        if (r.address) found.push({ address: r.address, reason: r.reason, detail: r.detail, suppressedAt: r.suppressedAt });
+      }
+    }
+    return found;
+  } catch (err) {
+    console.error("suppression lookup failed — allowing the send", err);
+    return [];
   }
 }
 
@@ -488,6 +527,18 @@ async function sendMessage(owned: string[], body: SendBody): Promise<APIGatewayP
   const bcc = (body.bcc ?? []).map(normalizeAddress).filter(Boolean);
   if (to.length === 0 && cc.length === 0 && bcc.length === 0) {
     return json(400, { error: "at least one recipient required" });
+  }
+
+  // Do-not-send list: refuse mail to addresses that hard-bounced or reported us as spam.
+  // Continuing to mail them is what gets an AWS account throttled or suspended — and AWS's
+  // own account-level suppression would otherwise ACCEPT this send and never deliver it,
+  // so the sender would believe a message went out that didn't. Refusing with the reason
+  // is both the honest and the safe answer. All-or-nothing on purpose: quietly dropping
+  // one recipient of a group message would be a silent half-send.
+  const blockedRecipients = splitSuppressedRecipients([...to, ...cc, ...bcc], await loadSuppressed([...to, ...cc, ...bcc])).blocked;
+  if (blockedRecipients.length > 0) {
+    console.warn(`send: refused — suppressed recipients [${blockedRecipients.map((b) => b.address).join(", ")}]`);
+    return json(403, { error: suppressedRecipientsMessage(blockedRecipients) });
   }
 
   // The From address must be one the caller owns. A requested From the session

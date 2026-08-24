@@ -31,6 +31,7 @@ import {
   GetAccountCommand,
   PutAccountDetailsCommand,
   PutEmailIdentityMailFromAttributesCommand,
+  DeleteSuppressedDestinationCommand,
 } from "@aws-sdk/client-sesv2";
 import {
   SESClient,
@@ -39,6 +40,8 @@ import {
   SetActiveReceiptRuleSetCommand,
   DescribeActiveReceiptRuleSetCommand,
   GetSendStatisticsCommand,
+  SetIdentityNotificationTopicCommand,
+  SetIdentityHeadersInNotificationsEnabledCommand,
 } from "@aws-sdk/client-ses";
 import {
   S3Client,
@@ -69,6 +72,7 @@ import {
   mailboxPk,
   addressDomain,
   liveDomainIdentities,
+  suppressionKey,
   liveRecipientIdentities,
   quotaSettingsKey,
   agentOwnedSettingsKey,
@@ -984,6 +988,110 @@ export async function resetMailboxPassword(
   return { ok: true, email };
 }
 
+/**
+ * Take an address off the do-not-send list, so mail to it is allowed again.
+ *
+ * Needed because the send path now REFUSES suppressed recipients (previously the list was
+ * written and displayed but never enforced). Without an undo, one hard bounce would block
+ * an address forever — e.g. a colleague whose mailbox was full for a day, or a customer
+ * who has since fixed their address. Deliberately an ADMIN action: it is a deliverability
+ * control, not something a mailbox user should be able to clear for themselves.
+ */
+export async function unsuppressAddress(
+  ctx: AwsContext,
+  stackName: string,
+  address: string,
+): Promise<{ ok: true; address: string }> {
+  const addr = address.trim().toLowerCase();
+  if (!addr) throw new Error("an address is required");
+  const { dynamodb } = clients(ctx);
+  const outputs = await getStackOutputs(ctx, stackName);
+  const settingsTable = await resolveSettingsTableName(ctx, stackName, outputs);
+  if (!settingsTable) throw new Error("No deployed MailPoppy backend was found — deploy the backend first.");
+  await dynamodb.send(
+    new DeleteItemCommand({ TableName: settingsTable, Key: { pk: { S: suppressionKey(addr) } } }),
+  );
+  // AWS keeps its OWN account-level suppression list, enabled by default, and adds every
+  // hard bounce and complaint to it. Clearing only MailPoppy's row would let the send pass
+  // our check and then be accepted-and-silently-dropped by SES — reproducing the exact
+  // failure this feature exists to prevent, while telling the admin it's fixed.
+  // NotFoundException just means AWS wasn't holding it; that's a success for us.
+  try {
+    const { sesv2 } = clients(ctx);
+    await sesv2.send(new DeleteSuppressedDestinationCommand({ EmailAddress: addr }));
+  } catch (e) {
+    if ((e as { name?: string }).name !== "NotFoundException") throw e;
+  }
+  await record([
+    {
+      action: "deleted",
+      service: "DynamoDB",
+      resourceType: "Suppressed address",
+      name: addr,
+      region: ctx.region,
+      detail: "admin cleared the do-not-send entry (MailPoppy + the AWS account-level suppression list)",
+    },
+  ]);
+  return { ok: true, address: addr };
+}
+
+/**
+ * Point a domain's SES bounce + complaint notifications at the deployed stack's SNS topic,
+ * so the suppression Lambda actually receives them.
+ *
+ * 🪤 WITHOUT THIS THE WHOLE FEEDBACK LOOP IS DEAD, and it was until 2026-08-23. The stack
+ * created the topic and subscribed the Lambda, but nobody ever told SES to PUBLISH to it —
+ * a subscriber with no publisher. So the do-not-send list stayed permanently empty AND the
+ * per-domain bounce/complaint counters behind Sending Health were always zero. (Found by an
+ * adversarial review of the change that made the send path honour that list.)
+ *
+ * Uses the SES v1 identity-notification API deliberately: it emits the `notificationType`
+ * shape suppression.ts already parses, and it applies per identity, so no send has to
+ * remember to name a configuration set. Headers are enabled too — the Lambda attributes an
+ * event to a domain from the From header, falling back to the envelope sender, which for a
+ * custom MAIL FROM subdomain would attribute to the wrong domain.
+ *
+ * Idempotent: re-running simply re-asserts the same topic, so re-opening the wizard repairs
+ * a domain that was set up before this existed.
+ */
+export async function wireFeedbackNotifications(
+  ctx: AwsContext,
+  domain: string,
+  stackName = MAILPOPPY_STACK_NAME,
+): Promise<{ ok: boolean; topicArn?: string; reason?: string }> {
+  const outputs = await getStackOutputs(ctx, stackName);
+  const topicArn = outputs.NotificationsTopicArn;
+  // No backend yet (domain set up before the stack): not an error — the wizard deploys the
+  // backend first, and re-running provisioning afterwards wires it.
+  if (!topicArn) return { ok: false, reason: "no deployed backend yet" };
+
+  const { ses } = clients(ctx);
+  for (const type of ["Bounce", "Complaint"] as const) {
+    await ses.send(
+      new SetIdentityNotificationTopicCommand({ Identity: domain, NotificationType: type, SnsTopic: topicArn }),
+    );
+    // Headers carry the From address the Lambda attributes the event to.
+    await ses.send(
+      new SetIdentityHeadersInNotificationsEnabledCommand({
+        Identity: domain,
+        NotificationType: type,
+        Enabled: true,
+      }),
+    );
+  }
+  await record([
+    {
+      action: "updated",
+      service: "SES",
+      resourceType: "Feedback notifications",
+      name: domain,
+      region: ctx.region,
+      detail: `bounce + complaint notifications → ${topicArn}`,
+    },
+  ]);
+  return { ok: true, topicArn };
+}
+
 /** Poll DKIM/identity verification (the gate before sending). */
 export async function getIdentityStatus(
   ctx: AwsContext,
@@ -1142,14 +1250,25 @@ export async function getDeliverability(
     const outputs = await getStackOutputs(ctx, stackName);
     const settingsTable = await resolveSettingsTableName(ctx, stackName, outputs);
     if (settingsTable) {
-      const scan = await dynamodb.send(
-        new ScanCommand({
-          TableName: settingsTable,
-          FilterExpression: "begins_with(pk, :p)",
-          ExpressionAttributeValues: { ":p": { S: "SUPPRESS#" } },
-        }),
-      );
-      suppressed = (scan.Items ?? []).map((it) => ({
+      // Paginate: a FILTERED Scan stops after ~1 MB of SCANNED items, so a single page can
+      // miss suppressed rows entirely. Enforcement reads by exact key and is complete, so an
+      // address missing from this list would be blocked with no "Allow again" button — the
+      // admin's only escape hatch, invisible.
+      const items: Record<string, { S?: string }>[] = [];
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const page = await dynamodb.send(
+          new ScanCommand({
+            TableName: settingsTable,
+            FilterExpression: "begins_with(pk, :p)",
+            ExpressionAttributeValues: { ":p": { S: "SUPPRESS#" } },
+            ExclusiveStartKey: lastKey as never,
+          }),
+        );
+        for (const it of page.Items ?? []) items.push(it as never);
+        lastKey = page.LastEvaluatedKey as never;
+      } while (lastKey);
+      suppressed = items.map((it) => ({
         address: it.address?.S ?? (it.pk?.S ?? "").replace(/^SUPPRESS#/, ""),
         reason: it.reason?.S ?? "bounce",
         detail: it.detail?.S,

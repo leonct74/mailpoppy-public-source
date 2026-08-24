@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, cleanup, waitFor } from "@testing-library/react";
+import { render, screen, cleanup, waitFor, fireEvent } from "@testing-library/react";
 import { SendingHealthView } from "./SendingHealthView";
 import type { DeliverabilityOverview, DeliverabilityStatus, DomainDeliverability } from "@mailpoppy/core";
 
@@ -133,5 +133,56 @@ describe("SendingHealthView", () => {
       />,
     );
     await waitFor(() => expect(screen.getByText(/Couldn't check your sending health/)).toBeInTheDocument());
+  });
+});
+
+// The do-not-send list became ENFORCING on 2026-08-23 (the send path now refuses these
+// recipients). That makes an escape hatch mandatory: without it a single hard bounce —
+// a colleague's mailbox full for a day — blocks that address forever.
+describe("the do-not-send list", () => {
+  const withSuppressed = (suppressed: { address: string; reason?: string }[]) => ({
+    account: {
+      sendingPaused: false,
+      dailyUsed: 10,
+      dailyLimit: 50000,
+      totals: { deliveryAttempts: 100, bounces: 1, complaints: 0 },
+      suppressed,
+    },
+    domains: [],
+  });
+
+  it("lists each suppressed address with why, and offers a way back", async () => {
+    render(
+      <SendingHealthView
+        stackName="MailpoppyMailStack"
+        load={async () => withSuppressed([{ address: "gone@example.com", reason: "bounce" }]) as never}
+      />,
+    );
+
+    expect(await screen.findByText("gone@example.com")).toBeInTheDocument();
+    expect(screen.getByText(/kept bouncing/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Allow again/i })).toBeInTheDocument();
+  });
+
+  it("clears the address and refreshes, so the list reflects reality", async () => {
+    const clear = vi.fn(async () => ({ ok: true as const, address: "gone@example.com" }));
+    let calls = 0;
+    const load = vi.fn(async () => {
+      calls++;
+      return withSuppressed(calls === 1 ? [{ address: "gone@example.com", reason: "bounce" }] : []) as never;
+    });
+
+    render(<SendingHealthView stackName="MailpoppyMailStack" load={load} clearSuppression={clear} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Allow again/i }));
+
+    await waitFor(() => expect(clear).toHaveBeenCalledWith("MailpoppyMailStack", "gone@example.com"));
+    // Re-read after clearing — otherwise the row lingers and the admin clicks again.
+    await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByText("gone@example.com")).not.toBeInTheDocument());
+  });
+
+  it("shows nothing when no address is suppressed", async () => {
+    render(<SendingHealthView stackName="MailpoppyMailStack" load={async () => withSuppressed([]) as never} />);
+    await waitFor(() => expect(screen.queryByText(/stopped emailing/i)).not.toBeInTheDocument());
   });
 });

@@ -33,3 +33,15 @@ export function validateTestRecipient(recipient: string, domain: string): string
   }
   return null;
 }
+
+/**
+ * Clear one address from the do-not-send list (admin). Mutating: the send path REFUSES
+ * suppressed recipients, so this is what lets mail to a fixed address flow again.
+ */
+export function clearSuppression(stackName: string, address: string): Promise<{ ok: true; address: string }> {
+  return sidecar("/ses/suppression/clear", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ stackName, address }),
+  });
+}

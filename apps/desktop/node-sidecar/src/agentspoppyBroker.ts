@@ -209,6 +209,13 @@ export function permissionSet() {
         "DescribeReceiptRuleSet", "DescribeActiveReceiptRuleSet", "SetActiveReceiptRuleSet",
         "CreateEmailIdentity", "GetEmailIdentity", "DeleteEmailIdentity", "ListEmailIdentities",
         "GetAccount", "GetSendStatistics", "PutAccountDetails", "PutEmailIdentityMailFromAttributes", "SendEmail",
+        // Point a domain's bounce/complaint notifications at our SNS topic, so the
+        // suppression Lambda receives them (without these the do-not-send list and the
+        // per-domain sending-health counters are never populated at all).
+        "SetIdentityNotificationTopic", "SetIdentityHeadersInNotificationsEnabled",
+        // Clearing a do-not-send entry must also clear AWS's OWN account-level suppression
+        // entry, or the "unblocked" send is accepted by SES and silently dropped.
+        "DeleteSuppressedDestination",
       ]),
       grant("route53", ["ListHostedZonesByName", "ListResourceRecordSets", "ChangeResourceRecordSets"]),
       grant("guardduty", [
