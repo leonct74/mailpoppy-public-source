@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { friendlyError } from "../lib/errors";
 import { ExtLink } from "../ui/ExtLink";
+import { SesReviewGuide } from "./SesReviewGuide";
 import {
   sendingAccessState,
   validateProductionAccessRequest,
@@ -13,7 +15,7 @@ import {
   getSesAccount as defaultGetSesAccount,
   requestProductionAccess as defaultRequestProductionAccess,
 } from "../lib/sesAccount";
-import { Button } from "../ui";
+import { Button, cn } from "../ui";
 
 // "Sending access" panel for the setup wizard. Every AWS account starts SES in a
 // "sandbox": you can only send to verified addresses, ~200 msgs/day. To run real
@@ -144,32 +146,13 @@ export function SendingAccessView({ defaultWebsite, region, load, submit }: Send
           )}
           {state === "pending" && (
             <Banner tone="info">
-              ⏳ <b>Production access requested.</b> AWS is reviewing your request — usually under 24 hours. You&apos;ll get
-              an email at your AWS account&apos;s address when it&apos;s decided, and this panel updates itself. Until then
-              you can only send to verified addresses.
-              <p className="mt-2">
-                <b className="text-on-surface">AWS often replies with a question first</b> (how you handle bounces, who
-                you&apos;ll email). That conversation happens in AWS&apos;s own Support Center, not here — MailPoppy can send
-                the request and read the verdict, but it can&apos;t answer follow-up questions for you. If AWS asks
-                something, answer it there or the review just sits.
-              </p>
-              <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
-                <ExtLink href="https://console.aws.amazon.com/support/home#/cases" className="text-primary hover:underline">
-                  Open your AWS support cases →
-                </ExtLink>
-                <ExtLink
-                  href={
-                    region
-                      ? `https://${region}.console.aws.amazon.com/ses/home?region=${region}#/account`
-                      : "https://console.aws.amazon.com/ses/home#/account"
-                  }
-                  className="text-primary hover:underline"
-                >
-                  SES account dashboard →
-                </ExtLink>
-              </p>
+              ⏳ <b>Production access requested.</b> Until Amazon grants it, this account can still only send to addresses
+              verified with AWS — so MailPoppy isn&apos;t usable for real mail yet. This is the last thing standing between
+              you and a working mailbox.
+              <SesReviewGuide className="mt-2" region={region} />
             </Banner>
           )}
+
           {state === "denied" && (
             <Banner tone="danger">
               ⚠️ <b>AWS did not approve the request.</b> The reason is in AWS&apos;s email and in the support case itself —
@@ -190,11 +173,20 @@ export function SendingAccessView({ defaultWebsite, region, load, submit }: Send
           )}
           {state === "sandbox" && (
             <Banner tone="warn">
-              🟡 <b>Your SES account is in the sandbox.</b> You can send only to <i>verified</i> addresses, with a small
-              daily cap. To send real mail to anyone, request production access below. It&apos;s a <b>manual review by
-              AWS</b> (usually under a day) — MailPoppy submits exactly the form AWS asks for, but AWS may still come back
-              with a question you answer in their Support Center.
+              🟡 <b>Your SES account is in the sandbox.</b> Amazon starts every new account this way: you can send only to
+              addresses <i>verified</i> with AWS, with a small daily cap. That means <b className="text-on-surface">MailPoppy
+              can&apos;t be used for real email yet</b> — everything else can be set up, but your mailboxes can&apos;t write to
+              ordinary people until Amazon lifts this. Request production access below. It&apos;s a manual review by a person
+              at AWS, usually under a day, and they may reply with a question you answer yourself in their Support Center.
             </Banner>
+          )}
+
+          {(state === "pending" || state === "sandbox") && (
+            <div>
+              <Button size="sm" variant="ghost" onClick={() => void refresh()} disabled={loading}>
+                <RefreshCw className={cn("size-3.5", loading && "animate-spin")} /> Check again
+              </Button>
+            </div>
           )}
 
           {account.sendQuota && (

@@ -39,7 +39,7 @@ describe("SendingAccessView", () => {
   it("shows the under-review state when a request is pending", async () => {
     render(<SendingAccessView load={async () => pending} />);
 
-    expect(await screen.findByText(/AWS is reviewing/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Production access requested/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Request production access/i })).toBeNull();
   });
 
@@ -69,7 +69,7 @@ describe("SendingAccessView", () => {
     expect(req.useCaseDescription.length).toBeGreaterThanOrEqual(30);
 
     // After submit, status refreshes to the pending banner.
-    expect(await screen.findByText(/AWS is reviewing/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Production access requested/i)).toBeInTheDocument();
   });
 });
 
@@ -137,8 +137,9 @@ describe("what the panel promises about AWS's review", () => {
     render(<SendingAccessView load={async () => pending} region="eu-west-1" />);
 
     expect(await screen.findByText(/Production access requested/i)).toBeInTheDocument();
-    expect(screen.getByText(/often replies with a question/i)).toBeInTheDocument();
-    expect(screen.getByText(/can't answer follow-up questions for you/i)).toBeInTheDocument();
+    expect(screen.getByText(/Tomorrow, even if you have heard nothing/i)).toBeInTheDocument();
+    // The gating fact the founder asked for: it isn't usable for real mail until AWS lifts this.
+    expect(screen.getByText(/isn't usable for real mail yet/i)).toBeInTheDocument();
 
     const cases = screen.getByRole("link", { name: /support cases/i });
     expect(cases).toHaveAttribute("href", "https://console.aws.amazon.com/support/home#/cases");
