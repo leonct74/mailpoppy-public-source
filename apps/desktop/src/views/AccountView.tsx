@@ -1,5 +1,5 @@
 import { SlidersHorizontal } from "lucide-react";
-import { resolveStackName } from "../lib/deploymentConfig";
+import { resolveStackName, loadDeploymentConfig } from "../lib/deploymentConfig";
 import { SendingAccessView } from "./SendingAccessView";
 import { SendSettingsEditor } from "./SendSettingsEditor";
 import { ResourcesView } from "./ResourcesView";
@@ -54,7 +54,7 @@ export function AccountView({ stackName = resolveStackName() }: { stackName?: st
             {/* Sending access is an AWS account+region property (SES sandbox →
                 production), not per-domain — it lives here. */}
             <Card>
-              <SendingAccessView />
+              <SendingAccessView region={loadDeploymentConfig()?.region} />
             </Card>
           </>
         }

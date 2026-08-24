@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { friendlyError } from "../lib/errors";
+import { ExtLink } from "../ui/ExtLink";
 import {
   sendingAccessState,
   validateProductionAccessRequest,
@@ -43,11 +44,15 @@ const DEFAULT_USE_CASE =
 export interface SendingAccessViewProps {
   /** Prefill the website URL (e.g. the domain being set up). */
   defaultWebsite?: string;
+  /** AWS region, so the SES console link lands on the right account dashboard.
+   *  Omitted → a region-neutral link, which AWS resolves to the last region used
+   *  (better than confidently pointing at the wrong one). */
+  region?: string;
   load?: () => Promise<SesAccountStatus>;
   submit?: (req: ProductionAccessRequest) => Promise<SesAccountStatus>;
 }
 
-export function SendingAccessView({ defaultWebsite, load, submit }: SendingAccessViewProps) {
+export function SendingAccessView({ defaultWebsite, region, load, submit }: SendingAccessViewProps) {
   const loadAccount = load ?? defaultGetSesAccount;
   const submitRequest = submit ?? defaultRequestProductionAccess;
 
@@ -139,15 +144,41 @@ export function SendingAccessView({ defaultWebsite, load, submit }: SendingAcces
           )}
           {state === "pending" && (
             <Banner tone="info">
-              ⏳ <b>Production access requested.</b> AWS is reviewing your request — this usually takes under 24 hours.
-              You'll get an email at your AWS account's address when it's decided. Until then you can only send to verified
-              addresses.
+              ⏳ <b>Production access requested.</b> AWS is reviewing your request — usually under 24 hours. You&apos;ll get
+              an email at your AWS account&apos;s address when it&apos;s decided, and this panel updates itself. Until then
+              you can only send to verified addresses.
+              <p className="mt-2">
+                <b className="text-on-surface">AWS often replies with a question first</b> (how you handle bounces, who
+                you&apos;ll email). That conversation happens in AWS&apos;s own Support Center, not here — MailPoppy can send
+                the request and read the verdict, but it can&apos;t answer follow-up questions for you. If AWS asks
+                something, answer it there or the review just sits.
+              </p>
+              <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1">
+                <ExtLink href="https://console.aws.amazon.com/support/home#/cases" className="text-primary hover:underline">
+                  Open your AWS support cases →
+                </ExtLink>
+                <ExtLink
+                  href={
+                    region
+                      ? `https://${region}.console.aws.amazon.com/ses/home?region=${region}#/account`
+                      : "https://console.aws.amazon.com/ses/home#/account"
+                  }
+                  className="text-primary hover:underline"
+                >
+                  SES account dashboard →
+                </ExtLink>
+              </p>
             </Banner>
           )}
           {state === "denied" && (
             <Banner tone="danger">
-              ⚠️ <b>AWS did not approve the request.</b> Check the email AWS sent for the reason, adjust the details below,
-              and submit again.
+              ⚠️ <b>AWS did not approve the request.</b> The reason is in AWS&apos;s email and in the support case itself —
+              read it, adjust the details below, and submit again.
+              <p className="mt-1.5">
+                <ExtLink href="https://console.aws.amazon.com/support/home#/cases" className="text-primary hover:underline">
+                  Open your AWS support cases →
+                </ExtLink>
+              </p>
             </Banner>
           )}
           {state === "disabled" && (
@@ -160,7 +191,9 @@ export function SendingAccessView({ defaultWebsite, load, submit }: SendingAcces
           {state === "sandbox" && (
             <Banner tone="warn">
               🟡 <b>Your SES account is in the sandbox.</b> You can send only to <i>verified</i> addresses, with a small
-              daily cap. To send real mail to anyone, request production access below.
+              daily cap. To send real mail to anyone, request production access below. It&apos;s a <b>manual review by
+              AWS</b> (usually under a day) — MailPoppy submits exactly the form AWS asks for, but AWS may still come back
+              with a question you answer in their Support Center.
             </Banner>
           )}
 

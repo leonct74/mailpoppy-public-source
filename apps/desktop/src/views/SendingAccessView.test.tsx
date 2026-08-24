@@ -126,3 +126,40 @@ describe("a rejected production-access request", () => {
     await waitFor(() => expect(submit).toHaveBeenCalledTimes(2));
   });
 });
+
+// Founder question 2026-08-23: "can a user who never activated SES do this end-to-end?"
+// Honest answer: MailPoppy submits the request and reads the verdict, but AWS's review is
+// a conversation in ITS Support Center that we cannot drive. The UI has to say so, and
+// give the user somewhere to go — otherwise "requested" reads as "nothing left to do"
+// while AWS silently waits on an unanswered question.
+describe("what the panel promises about AWS's review", () => {
+  it("tells a pending user AWS may ask a question, and links to the support cases", async () => {
+    render(<SendingAccessView load={async () => pending} region="eu-west-1" />);
+
+    expect(await screen.findByText(/Production access requested/i)).toBeInTheDocument();
+    expect(screen.getByText(/often replies with a question/i)).toBeInTheDocument();
+    expect(screen.getByText(/can't answer follow-up questions for you/i)).toBeInTheDocument();
+
+    const cases = screen.getByRole("link", { name: /support cases/i });
+    expect(cases).toHaveAttribute("href", "https://console.aws.amazon.com/support/home#/cases");
+    // The SES link must land in the region the account actually uses.
+    expect(screen.getByRole("link", { name: /SES account dashboard/i })).toHaveAttribute(
+      "href",
+      "https://eu-west-1.console.aws.amazon.com/ses/home?region=eu-west-1#/account",
+    );
+  });
+
+  it("falls back to a region-neutral SES link rather than guessing a wrong region", async () => {
+    render(<SendingAccessView load={async () => pending} />);
+    await screen.findByText(/Production access requested/i);
+    expect(screen.getByRole("link", { name: /SES account dashboard/i })).toHaveAttribute(
+      "href",
+      "https://console.aws.amazon.com/ses/home#/account",
+    );
+  });
+
+  it("warns BEFORE submitting that AWS reviews manually and may follow up", async () => {
+    render(<SendingAccessView load={async () => sandbox} />);
+    expect(await screen.findByText(/manual review by/i)).toBeInTheDocument();
+  });
+});
