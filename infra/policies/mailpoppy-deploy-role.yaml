@@ -80,6 +80,8 @@ Resources:
                   - iam:GetRolePolicy
                   - iam:ListRolePolicies
                   - iam:ListAttachedRolePolicies
+                  - iam:PutRolePermissionsBoundary
+                  - iam:DeleteRolePermissionsBoundary
                 Resource: arn:aws:iam::*:role/MailpoppyMailStack-*
               # Scoped by resource to this stack's own roles (Lambda exec, Cognito SMS,
               # GuardDuty scan). No iam:PassedToService condition: some services
@@ -156,11 +158,10 @@ Resources:
                   - apigateway:PATCH
                   - apigateway:PUT
                   - apigateway:DELETE
-                  - apigateway:TagResource
-                  - apigateway:UntagResource
                 Resource:
-                  - arn:aws:apigateway:*::/apis
-                  - arn:aws:apigateway:*::/apis/*
+                  - arn:aws:apigateway:*::/apis*
+                  - arn:aws:apigateway:*::/v2/apis*
+                  - arn:aws:apigateway:*::/tags*
               - Sid: Sns
                 Effect: Allow
                 Action:

@@ -63,9 +63,11 @@ function auditPrompt(ver: BackendVersion): string {
 // The email engine runs in the USER's own AWS. When a new app build ships an improved
 // backend (any Lambda change bumps the content-addressed code key), the deployed stack
 // is now behind — and there is no other channel to push it: it lives in their account,
-// not ours. This panel detects that (bundled code key ≠ deployed LambdaCodeKey) and
-// lets the user apply it in one click. The update changes ONLY the code (server-side
-// UsePreviousValue keeps every setting), so it never interrupts mail or re-keys anything.
+// not ours. This panel detects that (bundled code key ≠ deployed LambdaCodeKey, or the
+// bundled template hash ≠ the one tagged on the stack — infrastructure changes without
+// touching a handler) and lets the user apply it in one click. Every setting the user
+// chose is preserved server-side via UsePreviousValue, so it never interrupts mail or
+// re-keys anything.
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -199,7 +201,7 @@ export function BackendUpdate() {
       </h2>
       <p className="mt-1 max-w-2xl text-sm text-on-surface-variant">
         The email engine running in your own AWS account. When a MailPoppy update improves the backend, apply it here —
-        it changes the code only, keeping every setting, mailbox and message intact.
+        it updates the engine and its AWS setup, keeping every setting, mailbox and message intact.
       </p>
 
       {loading && <p className="mt-3 text-sm text-on-surface-variant">Checking…</p>}

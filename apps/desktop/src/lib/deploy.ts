@@ -85,6 +85,11 @@ export interface BackendVersion {
   deployedKey?: string;
   /** The code key bundled in THIS app build. */
   currentKey: string;
+  /** Template hash recorded on the deployed stack (absent on stacks predating the tag). */
+  deployedTemplateHash?: string;
+  /** Template hash bundled in THIS app build. */
+  currentTemplateHash: string;
+  /** True when either the Lambda code OR the infrastructure differs from this build. */
   updateAvailable: boolean;
   /** CloudFormation StackStatus — non-`*_COMPLETE` means an operation is in flight. */
   stackStatus?: string;

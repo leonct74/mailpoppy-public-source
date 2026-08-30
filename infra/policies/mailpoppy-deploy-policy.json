@@ -48,7 +48,9 @@
         "iam:DeleteRolePolicy",
         "iam:GetRolePolicy",
         "iam:ListRolePolicies",
-        "iam:ListAttachedRolePolicies"
+        "iam:ListAttachedRolePolicies",
+        "iam:PutRolePermissionsBoundary",
+        "iam:DeleteRolePermissionsBoundary"
       ],
       "Resource": "arn:aws:iam::*:role/MailpoppyMailStack-*"
     },
@@ -137,9 +139,7 @@
         "apigateway:GET",
         "apigateway:PATCH",
         "apigateway:PUT",
-        "apigateway:DELETE",
-        "apigateway:TagResource",
-        "apigateway:UntagResource"
+        "apigateway:DELETE"
       ],
       "Resource": ["arn:aws:apigateway:*::/apis*", "arn:aws:apigateway:*::/v2/apis*", "arn:aws:apigateway:*::/tags*"]
     },

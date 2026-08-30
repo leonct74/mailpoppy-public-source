@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { capabilityTiers, type Capabilities } from "./capabilities";
+import {
+  capabilityTiers,
+  DEPLOY_POLICY_URL,
+  PROVISIONING_POLICY_URL,
+  type Capabilities,
+} from "./capabilities";
 
 /** capabilityTiers always returns [operate, deploy]; index safely under noUncheckedIndexedAccess. */
 function tiers(c: Capabilities) {
@@ -15,6 +20,14 @@ describe("capabilityTiers", () => {
     expect(deploy.status).toBe("allowed");
     expect(operate.fixUrl).toBeUndefined();
     expect(deploy.fixUrl).toBeUndefined();
+  });
+
+  // The monorepo is private forever; only the mirror is fetchable by a user. These links
+  // 404'd in the shipped app because every assertion here only checked the FILENAME.
+  it("policy links point at the public mirror, not the private monorepo", () => {
+    for (const url of [PROVISIONING_POLICY_URL, DEPLOY_POLICY_URL]) {
+      expect(url).toMatch(/^https:\/\/github\.com\/leonct74\/mailpoppy-public-source\//);
+    }
   });
 
   it("denied deploy → points at the deploy policy", () => {

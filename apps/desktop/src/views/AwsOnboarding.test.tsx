@@ -37,6 +37,11 @@ describe("AwsOnboarding", () => {
       .filter((h): h is string => !!h);
     expect(hrefs.some((h) => h.endsWith("/mailpoppy-provisioning-policy.json"))).toBe(true);
     expect(hrefs.some((h) => h.endsWith("/mailpoppy-deploy-policy.json"))).toBe(true);
+    // Asserting only the filename let these ship pointing at the PRIVATE monorepo, so every
+    // onboarding user clicking "view the policy" got a GitHub 404.
+    for (const h of hrefs.filter((u) => u.includes("github.com"))) {
+      expect(h).toContain("github.com/leonct74/mailpoppy-public-source/");
+    }
   });
 
   it("does not imply the user pays MailPoppy for AWS usage", () => {

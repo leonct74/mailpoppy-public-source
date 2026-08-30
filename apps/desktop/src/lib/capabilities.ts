@@ -20,7 +20,9 @@ export function getCapabilities(): Promise<Capabilities> {
   return sidecar<Capabilities>("/aws/capabilities");
 }
 
-const REPO = "https://github.com/leonct74/mailpoppy/blob/main/infra/policies";
+// The monorepo is PRIVATE (and stays private) — every user-facing source link must point at
+// the public mirror, or it 404s for everyone but the maintainer. See CLAUDE.md.
+const REPO = "https://github.com/leonct74/mailpoppy-public-source/blob/main/infra/policies";
 export const PROVISIONING_POLICY_URL = `${REPO}/mailpoppy-provisioning-policy.json`;
 export const DEPLOY_POLICY_URL = `${REPO}/mailpoppy-deploy-policy.json`;
 

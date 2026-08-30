@@ -10,9 +10,16 @@ import { backendVersion, type BackendVersion } from "../lib/deploy";
 // update exists and lands them on Account → Backend to AUDIT it (provenance, diff, agent
 // verification) and decide. It never applies anything itself — the human still gates that.
 
-/** localStorage key holding the code key of the update the user muted. Keyed to the
- *  OFFERED update (`currentKey`), so muting is per-update: a newer update notifies again. */
+/** localStorage key holding the identity of the update the user muted. Keyed to the
+ *  OFFERED update, so muting is per-update: a newer update notifies again. */
 const MUTE_KEY = "mailpoppy.backend-update-muted";
+
+/** What the user is muting. It must name BOTH halves of an update: an
+ *  infrastructure-only change leaves the code key identical, so muting by code key alone
+ *  would silently suppress it — forever, and precisely for the users who mute. */
+function updateIdentity(ver: BackendVersion): string {
+  return `${ver.currentKey}|${ver.currentTemplateHash}`;
+}
 
 function mutedKey(): string | null {
   try {
@@ -45,12 +52,12 @@ export function BackendUpdateBanner({ hidden, onReview }: { hidden?: boolean; on
   }, [hidden]);
 
   if (hidden || dismissed || !ver?.stackExists || !ver.updateAvailable) return null;
-  if (mutedKey() === ver.currentKey) return null;
+  if (mutedKey() === updateIdentity(ver)) return null;
 
   function muteThisUpdate() {
     if (!ver) return;
     try {
-      localStorage.setItem(MUTE_KEY, ver.currentKey);
+      localStorage.setItem(MUTE_KEY, updateIdentity(ver));
     } catch {
       // storage unavailable — dismiss for this session only
     }

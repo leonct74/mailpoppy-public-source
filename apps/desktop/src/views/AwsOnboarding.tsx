@@ -17,6 +17,9 @@ import {
 import { setAwsCredentials as defaultSubmit, type AwsCredentialInput, type Readiness } from "../lib/awsCredentials";
 import { Button, Spinner, cn, ExtLink } from "../ui";
 import { friendlyError } from "../lib/errors";
+// Single source of truth for the policy links — duplicating them here is how they were left
+// pointing at the now-private monorepo while the shared constants moved on.
+import { PROVISIONING_POLICY_URL as POLICY_FILE, DEPLOY_POLICY_URL as DEPLOY_POLICY_FILE } from "../lib/capabilities";
 
 // Shown on Setup → Step 0 when no AWS credentials resolve. Two jobs:
 //  (a) hand-hold a newcomer who has no AWS account yet (what it is, rough cost,
@@ -32,10 +35,6 @@ import { friendlyError } from "../lib/errors";
 
 const AWS_SIGNUP = "https://aws.amazon.com/free/";
 const IAM_CONSOLE = "https://console.aws.amazon.com/iam/home#/users";
-const POLICY_FILE =
-  "https://github.com/leonct74/mailpoppy/blob/main/infra/policies/mailpoppy-provisioning-policy.json";
-const DEPLOY_POLICY_FILE =
-  "https://github.com/leonct74/mailpoppy/blob/main/infra/policies/mailpoppy-deploy-policy.json";
 const AWS_CLI_INSTALL = "https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html";
 
 const CONFIGURE_CMD = "aws configure --profile mailpoppy";

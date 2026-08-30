@@ -7,8 +7,10 @@ import {
   CfnCondition,
   CfnOutput,
   Fn,
+  Aspects,
+  Aws,
 } from "aws-cdk-lib";
-import type { Construct } from "constructs";
+import type { Construct, IConstruct } from "constructs";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as cognito from "aws-cdk-lib/aws-cognito";
@@ -81,6 +83,36 @@ export class MailStack extends Stack {
       allowedValues: ["true", "false"],
       default: "false",
       description: "Encrypt mailbox body + attachments at rest so even the AWS admin can't read them.",
+    });
+    // AgentsPoppy permissions boundary (broker-role-v2 step 2). When the host confirms
+    // the account's AgentsPoppyBoundary policy exists, the sidecar passes its ARN here
+    // and EVERY IAM role this stack creates is capped by it — the platform's ceiling on
+    // poppy-created principals. Empty (the default) deploys unbounded, so the stack
+    // still works for standalone installs and pre-boundary AgentsPoppy setups (naming
+    // a policy that doesn't exist would fail CreateRole). The boundary caps, it never
+    // grants: the roles' own policies are unchanged either way.
+    const permissionsBoundaryArn = new CfnParameter(this, "PermissionsBoundaryArn", {
+      type: "String",
+      default: "",
+      description:
+        "ARN of a managed policy to attach as the permissions boundary on every IAM role this stack creates (AgentsPoppy's AgentsPoppyBoundary). Empty = no boundary.",
+    });
+    const hasBoundary = new CfnCondition(this, "HasPermissionsBoundary", {
+      expression: Fn.conditionNot(Fn.conditionEquals(permissionsBoundaryArn.valueAsString, "")),
+    });
+    // An Aspect, because 5 of the 6 roles are CDK-implicit (the Lambdas' execution
+    // roles, Cognito's SMS role) with no source-level iam.Role to set the property on.
+    // Visiting every CfnRole in the tree is also future-proof: a role added later can't
+    // be forgotten.
+    Aspects.of(this).add({
+      visit(node: IConstruct) {
+        if (node instanceof iam.CfnRole) {
+          node.addPropertyOverride(
+            "PermissionsBoundary",
+            Fn.conditionIf(hasBoundary.logicalId, permissionsBoundaryArn.valueAsString, Aws.NO_VALUE),
+          );
+        }
+      },
     });
     const lambdaCode = lambda.Code.fromBucket(
       s3.Bucket.fromBucketName(this, "LambdaCodeBucketRef", codeBucketParam.valueAsString),

@@ -7,6 +7,8 @@ const version: BackendVersion = {
   stackExists: true,
   deployedKey: "lambda-code-old.zip",
   currentKey: "lambda-code-new.zip",
+  deployedTemplateHash: "tpl-old",
+  currentTemplateHash: "tpl-new",
   updateAvailable: true,
   stackStatus: "CREATE_COMPLETE",
   deployedCommit: "aaa",
@@ -80,6 +82,23 @@ describe("BackendUpdateBanner", () => {
 
     // A NEWER update (different code key) → banner returns.
     backendVersion.mockResolvedValue({ ...version, currentKey: "lambda-code-newer.zip" });
+    const newer = render(<BackendUpdateBanner onReview={() => {}} />);
+    await waitFor(() => expect(screen.getByText(/backend update/i)).toBeTruthy());
+    newer.unmount();
+  });
+
+  it("an infrastructure-only update is not covered by muting the previous one", async () => {
+    // The code key doesn't move when only the AWS setup changes, so a mute keyed to it
+    // alone would bury such an update permanently — for exactly the users who mute.
+    backendVersion.mockResolvedValue(version);
+    const first = render(<BackendUpdateBanner onReview={() => {}} />);
+    await waitFor(() => expect(screen.getByText(/backend update/i)).toBeTruthy());
+    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /don't show again/i }));
+    first.unmount();
+
+    // Same Lambda code, different infrastructure → a genuinely new update.
+    backendVersion.mockResolvedValue({ ...version, currentTemplateHash: "tpl-newer" });
     render(<BackendUpdateBanner onReview={() => {}} />);
     await waitFor(() => expect(screen.getByText(/backend update/i)).toBeTruthy());
   });

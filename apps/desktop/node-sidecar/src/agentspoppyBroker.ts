@@ -103,7 +103,10 @@ export function permissionSet() {
   const logs = "arn:aws:logs:*:*:log-group:/aws/lambda/MailpoppyMailStack-*";
   const topic = "arn:aws:sns:*:*:MailpoppyMailStack-*";
   const rule = "arn:aws:events:*:*:rule/MailpoppyMailStack-*";
-  const apigwVerbs = ["POST", "GET", "PATCH", "PUT", "DELETE", "TagResource", "UntagResource"];
+  // API Gateway has no TagResource/UntagResource IAM action — tagging goes through POST/PUT
+  // on the /tags path below. Access Analyzer rejects both names as INVALID_ACTION, and they
+  // only padded the consent list users read.
+  const apigwVerbs = ["POST", "GET", "PATCH", "PUT", "DELETE"];
   const buckets = "arn:aws:s3:::mailpoppy*";
   const objects = "arn:aws:s3:::mailpoppy*/*";
   return {
@@ -111,6 +114,8 @@ export function permissionSet() {
     name: "MailPoppy backend",
     description:
       "Deploy & manage the MailPoppy mail backend, scoped to MailpoppyMailStack-* / mailpoppy* resources. " +
+      "It also applies your AgentsPoppy safety limit to the roles it creates, so they can never be given " +
+      "more access than you have allowed. " +
       "If you also use CrewPoppy, mail addressed to an agent-owned mailbox is handed to your CrewPoppy agents. " +
       "MailPoppy can start your agents; it can never read their data or touch anything else of theirs.",
     grants: [
@@ -126,6 +131,11 @@ export function permissionSet() {
         "CreateRole", "DeleteRole", "GetRole", "TagRole", "UntagRole", "AttachRolePolicy",
         "DetachRolePolicy", "PutRolePolicy", "DeleteRolePolicy", "GetRolePolicy",
         "ListRolePolicies", "ListAttachedRolePolicies", "PassRole",
+        // AgentsPoppy's permissions boundary (broker-role-v2 step 2): CloudFormation
+        // attaches/strips it on the stack's own roles when the PermissionsBoundaryArn
+        // parameter is set/cleared. Same role scope — this CAPS the roles, it grants
+        // them nothing.
+        "PutRolePermissionsBoundary", "DeleteRolePermissionsBoundary",
       ], role),
       grant("iam", ["SimulatePrincipalPolicy"]), // read-only capability probe
       // --- Compute / data, all pinned to MailpoppyMailStack-* ---
@@ -273,7 +283,23 @@ interface BackendBootstrap {
    * on a host too old to send it, which is also a host too old to confine us.
    */
   dataDir?: string;
+  /**
+   * ARN of the account's `AgentsPoppyBoundary` managed policy — present only when the
+   * host has confirmed the deployed AgentsPoppy setup actually carries it. When set,
+   * the deploy passes it as the stack's `PermissionsBoundaryArn` parameter so every
+   * IAM role the stack creates is capped by the boundary. Absent → deploy preserves
+   * whatever the stack already has (never strips a boundary on a hiccup, never names
+   * a policy that may not exist).
+   */
+  permissionsBoundaryArn?: string;
   account: { accountId: string; region: string };
+}
+
+/** A usable IAM policy ARN, or undefined. See the bootstrap field's comment. */
+function boundaryArnOrUndefined(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const arn = v.trim();
+  return /^arn:aws[a-z-]*:iam::\d{12}:policy\/.+/.test(arn) ? arn : undefined;
 }
 
 function readBootstrap(): BackendBootstrap | null {
@@ -295,6 +321,12 @@ function readBootstrap(): BackendBootstrap | null {
         credentialsToken: typeof b.credentialsToken === "string" ? b.credentialsToken : undefined,
         port: typeof b.port === "number" ? b.port : undefined,
         dataDir: typeof b.dataDir === "string" && b.dataDir ? b.dataDir : undefined,
+        // Must look like an IAM policy ARN. Anything else — absent, empty, whitespace,
+        // the wrong shape — becomes undefined and we deploy unbounded, because a
+        // malformed value would make the CFN condition true and fail every CreateRole
+        // in the stack: a rolled-back deploy instead of the graceful degradation the
+        // optional-by-construction design promises.
+        permissionsBoundaryArn: boundaryArnOrUndefined(b.permissionsBoundaryArn),
         account: { accountId: b.account.accountId, region: b.account.region },
       };
     }
@@ -353,6 +385,15 @@ export function isContainerMode(): boolean {
 /** The AWS region the host resolved for this connection (container mode only). */
 export function brokerRegion(): string | undefined {
   return bootstrap?.account.region;
+}
+
+/**
+ * ARN of the account's AgentsPoppyBoundary policy, when the host confirmed it exists
+ * (container mode, AgentsPoppy setup v3+). Deploys pass it as the stack's
+ * `PermissionsBoundaryArn` parameter; absent means "preserve what's deployed".
+ */
+export function brokerBoundaryArn(): string | undefined {
+  return bootstrap?.permissionsBoundaryArn;
 }
 
 /** The loopback port the host assigned this backend to listen on (container mode only). */

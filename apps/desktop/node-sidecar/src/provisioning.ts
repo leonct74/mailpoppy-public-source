@@ -118,7 +118,7 @@ import {
   type Capability,
 } from "@aws-sdk/client-cloudformation";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { templateJson, lambdaZipBase64, lambdaCodeKey, updateManifest } from "./generated/backend-bundle";
+import { templateJson, lambdaZipBase64, lambdaCodeKey, templateHash, updateManifest } from "./generated/backend-bundle";
 import {
   CognitoIdentityProviderClient,
   AdminCreateUserCommand,
@@ -128,7 +128,7 @@ import {
   DeleteUserPoolCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { record, readLedger, type LedgerEntry } from "./ledger";
-import { brokerCredentials, brokerStackTags, isBrokerEnabled, brokerConnected, brokerAccountId } from "./agentspoppyBroker";
+import { brokerCredentials, brokerStackTags, isBrokerEnabled, brokerConnected, brokerAccountId, brokerBoundaryArn } from "./agentspoppyBroker";
 
 export interface AwsContext {
   region: string;
@@ -546,13 +546,87 @@ export interface DeployResult {
 /** Stack tags = AgentsPoppy attribution (when broker-connected) + `mailpoppy:sourceCommit`
  *  — the open-repo commit THIS build came from. Recording it on the stack lets the
  *  Update panel show from→to and lets a user/agent audit the deployed code against the
- *  public source. See docs/VERIFIABLE_UPDATES.md. */
+ *  public source. See docs/VERIFIABLE_UPDATES.md.
+ *
+ *  `mailpoppy:templateHash` records which INFRASTRUCTURE the stack is running, which the
+ *  Lambda code key can't express: an infrastructure-only change (a new parameter, a role
+ *  property, an IAM statement) leaves the code identical, so without this an existing
+ *  install would never be told an update exists. */
 function stackTags(
   brokerTags: { Key: string; Value: string }[] | null | undefined,
 ): { Key: string; Value: string }[] | undefined {
   const tags = brokerTags ? [...brokerTags, { Key: "agentspoppy:managed", Value: "mailpoppy" }] : [];
   if (updateManifest.commit) tags.push({ Key: "mailpoppy:sourceCommit", Value: updateManifest.commit });
+  tags.push({ Key: "mailpoppy:templateHash", Value: templateHash });
   return tags.length ? tags : undefined;
+}
+
+/**
+ * The stack's `PermissionsBoundaryArn` parameter value for this deploy
+ * (broker-role-v2 step 2 — the AgentsPoppy ceiling on every role the stack creates).
+ *
+ * Precedence is deliberate and fail-safe in both directions:
+ *  - The host CONFIRMED the boundary policy exists (bootstrap carries its ARN) → use it.
+ *    Naming it only when confirmed means CreateRole can never fail on a missing policy.
+ *  - Otherwise PRESERVE whatever the deployed stack already carries. "Absent from the
+ *    bootstrap" also covers a transient setup-status read failure on the host side, and
+ *    a code update must never strip an applied boundary because of a hiccup.
+ *  - No stack yet (fresh create) → empty, i.e. unbounded — correct for standalone
+ *    installs and pre-boundary AgentsPoppy setups.
+ */
+export const BOUNDARY_READ_FAILED =
+  "Couldn't check your backend's security settings, so the deploy was stopped rather than risk " +
+  "removing them. This is usually a temporary AWS problem — try again in a moment.";
+
+/**
+ * The precedence rule alone, with the AWS read injected — the security-critical half, kept
+ * pure so it can be tested without AWS. `readDeployed` must REJECT when the stack could not
+ * be read and resolve `null` only when there is genuinely no stack.
+ */
+export async function resolveBoundaryValue(input: {
+  confirmed: string | undefined;
+  status: string | null | undefined;
+  readDeployed: () => Promise<string | null>;
+}): Promise<string> {
+  if (input.confirmed) return input.confirmed;
+  // A stack about to be deleted and recreated has no live roles to protect, so there is
+  // nothing to preserve — and preserving it would carry an UNCONFIRMED ARN into a fresh
+  // CreateRole, turning one boundary-caused rollback into a self-perpetuating one.
+  if (input.status === "ROLLBACK_COMPLETE" || input.status === "REVIEW_IN_PROGRESS") return "";
+  try {
+    return (await input.readDeployed()) ?? "";
+  } catch (e) {
+    // "No stack" and "couldn't read the stack" must NOT be treated alike. Only the first
+    // means unbounded; the second means we don't know, and answering "" there would hand
+    // CloudFormation an empty parameter that STRIPS the boundary off every existing role —
+    // a security ceiling removed by a throttle or a dropped connection, silently.
+    throw new Error(`${BOUNDARY_READ_FAILED} (${(e as Error).message})`);
+  }
+}
+
+async function boundaryParameterValue(
+  ctx: AwsContext,
+  stackName: string,
+  status?: string | null,
+): Promise<string> {
+  const { cloudformation } = clients(ctx);
+  return resolveBoundaryValue({
+    confirmed: brokerBoundaryArn(),
+    status,
+    readDeployed: async () => {
+      try {
+        const out = await cloudformation.send(new DescribeStacksCommand({ StackName: stackName }));
+        return (
+          out.Stacks?.[0]?.Parameters?.find((p) => p.ParameterKey === "PermissionsBoundaryArn")?.ParameterValue ?? ""
+        );
+      } catch (e) {
+        // Deliberately narrower than the sibling helpers' `does not exist|ValidationError`:
+        // only a positive "absent" answer may degrade to unbounded; everything else throws.
+        if (/does not exist/i.test((e as Error).message ?? "")) return null;
+        throw e;
+      }
+    },
+  });
 }
 
 /**
@@ -608,16 +682,20 @@ export async function deployBackend(
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: templateKey, Body: templateJson, ContentType: "application/json" }));
   const templateUrl = `https://${bucket}.s3.${region}.amazonaws.com/${templateKey}`;
 
+  let status = await stackStatus(ctx, stackName);
+
   const Parameters = [
     { ParameterKey: "MailDomain", ParameterValue: domain },
     { ParameterKey: "LambdaCodeBucket", ParameterValue: bucket },
     { ParameterKey: "LambdaCodeKey", ParameterValue: lambdaCodeKey },
     { ParameterKey: "EnableMalwareProtection", ParameterValue: args.enableMalwareProtection ? "true" : "false" },
     { ParameterKey: "EncryptionEnabled", ParameterValue: args.enableEncryption ? "true" : "false" },
+    // Always explicit (never UsePreviousValue): the parameter is new to the template,
+    // and UsePreviousValue fails on the first update after a template gains a parameter.
+    { ParameterKey: "PermissionsBoundaryArn", ParameterValue: await boundaryParameterValue(ctx, stackName, status) },
   ];
   const Capabilities: Capability[] = ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"];
 
-  let status = await stackStatus(ctx, stackName);
   let operation: DeployResult["operation"];
 
   // A previous failed create leaves ROLLBACK_COMPLETE — it can't be updated, so
@@ -672,6 +750,11 @@ export interface BackendVersion {
   deployedKey?: string;
   /** The content-addressed code key bundled in THIS app build. */
   currentKey: string;
+  /** The template hash recorded on the deployed stack. Absent on stacks deployed before
+   *  the tag existed — which is itself proof their infrastructure is older. */
+  deployedTemplateHash?: string;
+  /** The template hash bundled in THIS app build. */
+  currentTemplateHash: string;
   updateAvailable: boolean;
   /** CloudFormation StackStatus — lets the UI distinguish "up to date" from a stack
    *  that's mid-operation (the deployed key parameter can already read the new value
@@ -700,11 +783,18 @@ export async function getBackendVersion(ctx: AwsContext, stackName = MAILPOPPY_S
     const st = out.Stacks?.[0];
     const deployedKey = st?.Parameters?.find((p) => p.ParameterKey === "LambdaCodeKey")?.ParameterValue;
     const deployedCommit = st?.Tags?.find((t) => t.Key === "mailpoppy:sourceCommit")?.Value;
+    const deployedTemplateHash = st?.Tags?.find((t) => t.Key === "mailpoppy:templateHash")?.Value;
     return {
       stackExists: !!st,
       deployedKey,
       currentKey: lambdaCodeKey,
-      updateAvailable: !!deployedKey && deployedKey !== lambdaCodeKey,
+      deployedTemplateHash,
+      currentTemplateHash: templateHash,
+      // Either half can be stale on its own: the Lambda code and the infrastructure ship
+      // together but change independently. A stack with no template-hash tag predates the
+      // tag, so its infrastructure is by definition older than this build's.
+      updateAvailable:
+        !!st && ((!!deployedKey && deployedKey !== lambdaCodeKey) || deployedTemplateHash !== templateHash),
       stackStatus: st?.StackStatus,
       deployedCommit,
       manifest: updateManifest,
@@ -716,6 +806,7 @@ export async function getBackendVersion(ctx: AwsContext, stackName = MAILPOPPY_S
       return {
         stackExists: false,
         currentKey: lambdaCodeKey,
+        currentTemplateHash: templateHash,
         updateAvailable: false,
         manifest: updateManifest,
         stackName,
@@ -771,13 +862,19 @@ export async function updateBackendCode(ctx: AwsContext, stackName = MAILPOPPY_S
   await s3.send(new PutObjectCommand({ Bucket: bucket, Key: templateKey, Body: templateJson, ContentType: "application/json" }));
   const templateUrl = `https://${bucket}.s3.${region}.amazonaws.com/${templateKey}`;
 
-  // ONLY the code key changes; every other parameter stays at its deployed value.
+  // ONLY the code key changes; every user-chosen parameter stays at its deployed value.
+  // PermissionsBoundaryArn is the one exception, and it is not a user choice: it's the
+  // platform's ceiling on the stack's roles, applied whenever the host confirms the
+  // boundary policy exists (and preserved as-deployed otherwise — see
+  // boundaryParameterValue). It must be explicit here regardless: UsePreviousValue
+  // fails on the first update after the template gains a new parameter.
   const Parameters = [
     { ParameterKey: "MailDomain", UsePreviousValue: true },
     { ParameterKey: "LambdaCodeBucket", UsePreviousValue: true },
     { ParameterKey: "LambdaCodeKey", ParameterValue: lambdaCodeKey },
     { ParameterKey: "EnableMalwareProtection", UsePreviousValue: true },
     { ParameterKey: "EncryptionEnabled", UsePreviousValue: true },
+    { ParameterKey: "PermissionsBoundaryArn", ParameterValue: await boundaryParameterValue(ctx, stackName, status) },
   ];
   const Capabilities: Capability[] = ["CAPABILITY_IAM", "CAPABILITY_NAMED_IAM", "CAPABILITY_AUTO_EXPAND"];
 

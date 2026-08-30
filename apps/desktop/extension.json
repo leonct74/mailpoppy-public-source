@@ -1,14 +1,14 @@
 {
   "id": "com.mailpoppy.desktop",
   "name": "MailPoppy",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "description": "Run your own private mail backend on your AWS account — deploy, manage, and tear it down.",
   "icon": "frontend/mailpoppy-icon.png",
   "bugsUrl": "https://github.com/leonct74/mailpoppy-public-source/issues",
   "permissionSet": {
     "id": "mailpoppy-backend",
     "name": "MailPoppy backend",
-    "description": "Deploy & manage the MailPoppy mail backend, scoped to MailpoppyMailStack-* / mailpoppy* resources. If you also use CrewPoppy, mail addressed to an agent-owned mailbox is handed to your CrewPoppy agents. MailPoppy can start your agents; it can never read their data or touch anything else of theirs.",
+    "description": "Deploy & manage the MailPoppy mail backend, scoped to MailpoppyMailStack-* / mailpoppy* resources. It also applies your AgentsPoppy safety limit to the roles it creates, so they can never be given more access than you have allowed. If you also use CrewPoppy, mail addressed to an agent-owned mailbox is handed to your CrewPoppy agents. MailPoppy can start your agents; it can never read their data or touch anything else of theirs.",
     "grants": [
       {
         "service": "cloudformation",
@@ -52,7 +52,9 @@
           "GetRolePolicy",
           "ListRolePolicies",
           "ListAttachedRolePolicies",
-          "PassRole"
+          "PassRole",
+          "PutRolePermissionsBoundary",
+          "DeleteRolePermissionsBoundary"
         ],
         "resourceScope": "arn:aws:iam::*:role/MailpoppyMailStack-*"
       },
@@ -169,9 +171,7 @@
           "GET",
           "PATCH",
           "PUT",
-          "DELETE",
-          "TagResource",
-          "UntagResource"
+          "DELETE"
         ],
         "resourceScope": "arn:aws:apigateway:*::/apis*"
       },
@@ -182,9 +182,7 @@
           "GET",
           "PATCH",
           "PUT",
-          "DELETE",
-          "TagResource",
-          "UntagResource"
+          "DELETE"
         ],
         "resourceScope": "arn:aws:apigateway:*::/v2/apis*"
       },
@@ -195,9 +193,7 @@
           "GET",
           "PATCH",
           "PUT",
-          "DELETE",
-          "TagResource",
-          "UntagResource"
+          "DELETE"
         ],
         "resourceScope": "arn:aws:apigateway:*::/tags*"
       },

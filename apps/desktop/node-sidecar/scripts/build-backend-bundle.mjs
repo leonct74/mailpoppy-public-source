@@ -101,6 +101,12 @@ async function main() {
   console.log("[2/3] cdk synth");
   execFileSync("npx", ["cdk", "synth", "--quiet"], { cwd: infraDir, stdio: "inherit" });
   const templateJson = readFileSync(join(infraDir, "cdk.out", "MailpoppyMailStack.template.json"), "utf8");
+  // Content address for the TEMPLATE, recorded as a stack tag at deploy time. The Lambda
+  // code key alone can't answer "is the deployed stack running this build's template?" —
+  // a change that touches only the infrastructure (a new parameter, a role property, an
+  // IAM statement) leaves the code key untouched, so without this such a change would
+  // never be offered to an existing install and would silently never reach users.
+  const templateHash = sha256(Buffer.from(templateJson)).slice(0, 16);
 
   // 4. Build the UPDATE MANIFEST — the provenance a user (or their AI agent) uses to audit
   //    what this backend update does against the open repo AND to reproduce it. Layer 1:
@@ -133,6 +139,11 @@ async function main() {
     artifact: lambdaCodeKey,
     // sha256 of the exact bytes deployed to S3 — reproducible on any runtime (STORED zip).
     archiveSha256: sha256(zipBuf),
+    // sha256 of the CloudFormation template deployed alongside that zip. An update can
+    // change the INFRASTRUCTURE without changing a single handler — the permissions
+    // boundary was the first to do so — and an audit that proves only the code would
+    // report REPRODUCED having checked nothing about what the update does to their IAM.
+    templateSha256: sha256(Buffer.from(templateJson)),
     summary: git(["log", "-1", "--format=%s"]),
     handlers: HANDLERS.map((h, i) => ({ name: h, sha256: sha256(handlerBytes[i]) })),
     // Exactly how to reproduce every hash above from `repo@commit`.
@@ -158,6 +169,7 @@ async function main() {
       `export const lambdaCodeKey = ${JSON.stringify(lambdaCodeKey)};`,
       `export const lambdaZipBase64 = ${JSON.stringify(zipB64)};`,
       `export const templateJson = ${JSON.stringify(templateJson)};`,
+      `export const templateHash = ${JSON.stringify(templateHash)};`,
       `export const updateManifest = ${JSON.stringify(updateManifest)} as const;`,
       "",
     ].join("\n"),

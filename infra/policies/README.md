@@ -32,7 +32,9 @@ Sending-health reads. The table below is kept **exactly** in step with the AWS S
 **`MailpoppyMailStack`** stack. Route53, SES and Cognito use `Resource: "*"` because AWS offers
 only coarse resource-level control for those actions (the Cognito user-pool id is created at
 deploy time and isn't known in advance) — the tightening there is via the explicit *action*
-allow-list. Both policy files (`.json` and `.yaml`) grant an identical action set.
+allow-list. Both policy files (`.json` and `.yaml`) grant an identical action set **on identical
+resources** — enforced by `apps/desktop/node-sidecar/scripts/lib/policy-parity.test.mjs`, because
+they had silently drifted three times and a drift only surfaces as an async stack rollback.
 
 ## Apply it
 

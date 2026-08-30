@@ -29,7 +29,7 @@ const genFile = join(sidecarRoot, "src", "generated", "backend-bundle.ts");
 // Fields a verifier checks are byte-for-byte reproducible from source. `builtAt` is
 // informational (wall clock) and `build.node` may legitimately differ (esbuild's output
 // is Node-independent), so neither is part of the proof.
-const PROOF_FIELDS = ["artifact", "archiveSha256"];
+const PROOF_FIELDS = ["artifact", "archiveSha256", "templateSha256"];
 
 function parseArgs(argv) {
   const out = {};

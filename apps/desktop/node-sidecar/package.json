@@ -8,7 +8,7 @@
     "gen:backend": "node scripts/build-backend-bundle.mjs",
     "gen:manifest": "tsx scripts/build-manifest.ts",
     "verify:backend": "node scripts/verify-backend-reproducible.mjs",
-    "test": "node --test scripts/lib/*.test.mjs",
+    "test": "node --test scripts/lib/*.test.mjs && node --import tsx --test src/*.test.ts",
     "predev": "npm run gen:backend",
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
