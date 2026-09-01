@@ -94,7 +94,13 @@ export const APP = { id: "com.mailpoppy.desktop", name: "MailPoppy" } as const;
  * container host reconciles the exact same scope and the two can never drift.
  */
 export function permissionSet() {
-  const grant = (service: string, actions: string[], resourceScope = "*") => ({ service, actions, resourceScope });
+  // `reason` is REQUIRED on any grant that is not confined to MailPoppy's own resources
+  // (AGENTS.md §3) — the approval screen shows the user what a permission would allow if
+  // MailPoppy were malicious, and this is the only thing that can say what it is FOR.
+  // It is not part of grantsSignature below, so adding or rewording one never supersedes a
+  // connection: consent is about capability, not prose.
+  const grant = (service: string, actions: string[], resourceScope = "*", reason?: string) =>
+    reason ? { service, actions, resourceScope, reason } : { service, actions, resourceScope };
   const stack = "arn:aws:cloudformation:*:*:stack/MailpoppyMailStack/*";
   const role = "arn:aws:iam::*:role/MailpoppyMailStack-*";
   const fn = "arn:aws:lambda:*:*:function:MailpoppyMailStack-*";
@@ -125,7 +131,8 @@ export function permissionSet() {
         "DescribeStackResources", "ListStackResources", "GetTemplate", "CreateChangeSet",
         "DescribeChangeSet", "ExecuteChangeSet", "DeleteChangeSet", "TagResource",
       ], stack),
-      grant("cloudformation", ["ValidateTemplate", "GetTemplateSummary"]),
+      grant("cloudformation", ["ValidateTemplate", "GetTemplateSummary"], "*",
+        "Before deploying, MailPoppy asks AWS to double-check its own deployment plan, so a mistake is caught before anything is created in your account."),
       // --- IAM: only the stack's own Lambda roles (NO user management, NO iam:*) ---
       grant("iam", [
         "CreateRole", "DeleteRole", "GetRole", "TagRole", "UntagRole", "AttachRolePolicy",
@@ -137,7 +144,8 @@ export function permissionSet() {
         // them nothing.
         "PutRolePermissionsBoundary", "DeleteRolePermissionsBoundary",
       ], role),
-      grant("iam", ["SimulatePrincipalPolicy"]), // read-only capability probe
+      grant("iam", ["SimulatePrincipalPolicy"], "*", // read-only capability probe
+        "During setup, MailPoppy asks AWS whether the credentials you connected have enough access to finish the job — so you find out at the start, not halfway through."),
       // --- Compute / data, all pinned to MailpoppyMailStack-* ---
       grant("lambda", [
         "CreateFunction", "DeleteFunction", "GetFunction", "GetFunctionConfiguration",
@@ -190,7 +198,8 @@ export function permissionSet() {
         "GetLifecycleConfiguration", "PutBucketCORS", "GetBucketCORS", "ListBucket", "HeadBucket",
       ], buckets),
       grant("s3", ["GetObject", "PutObject", "DeleteObject"], objects),
-      grant("s3", ["ListAllMyBuckets"]),
+      grant("s3", ["ListAllMyBuckets"], "*",
+        "During setup, MailPoppy looks through your storage bucket names to find its own and avoid a name clash. Names only — it never sees what is inside a bucket."),
       // --- Cognito: creating a pool/client, reading, and tagging can't be tied to a
       //     not-yet-existing resource (and CFN needs TagResource to stamp the propagated
       //     connection tag onto the new pool), so they stay account-wide — harmless.
@@ -208,7 +217,8 @@ export function permissionSet() {
         // pool whose id it already knows, and there's no ListUserPools grant to discover
         // others — MailPoppy only ever lists its own pool (from its stack outputs).
         "ListUsers",
-      ]),
+      ], "*",
+        "Creates the sign-in directory your mailboxes live in. Changing or deleting a directory is a separate permission, limited to the one MailPoppy itself created."),
       grant("cognito-idp", [
         "DeleteUserPool", "UpdateUserPool", "DeleteUserPoolClient", "UpdateUserPoolClient",
         "SetUserPoolMfaConfig", "AdminCreateUser", "AdminSetUserPassword", "AdminDeleteUser",
@@ -226,16 +236,43 @@ export function permissionSet() {
         // Clearing a do-not-send entry must also clear AWS's OWN account-level suppression
         // entry, or the "unblocked" send is accepted by SES and silently dropped.
         "DeleteSuppressedDestination",
-      ]),
-      grant("route53", ["ListHostedZonesByName", "ListResourceRecordSets", "ChangeResourceRecordSets"]),
+      ], "*",
+        "Sets up email for your domain: where incoming mail gets delivered, proving to other mail servers that your domain is really yours, and sending your outgoing mail."),
+      grant("route53", ["ListHostedZonesByName", "ListResourceRecordSets", "ChangeResourceRecordSets"], "*",
+        "Adds the DNS records that make email work for your domain — and reads what is already there first, so you can see what will change before it does."),
       grant("guardduty", [
         "CreateMalwareProtectionPlan", "GetMalwareProtectionPlan", "UpdateMalwareProtectionPlan",
         "DeleteMalwareProtectionPlan", "ListMalwareProtectionPlans", "TagResource", "UntagResource", "ListTagsForResource",
-      ]),
-      grant("sts", ["GetCallerIdentity"]),
+      ], "*",
+        "Turns on the optional virus scanning of mail attachments, if you choose it — and turns it off again when you remove MailPoppy."),
+      grant("sts", ["GetCallerIdentity"], "*",
+        "Checks which AWS account it is connected to, so setup can show you where it is about to work before it starts."),
     ],
-    requiredTags: [CONNECTION_TAG_KEY],
+    // All three attribution tags, because all three are what we actually stamp
+    // (brokerStackTags) and what AgentsPoppy needs to attribute and tear down. Declaring
+    // only the connection id understated it, and cost MailPoppy the one "missing
+    // attribution tags" warning in the fleet — no other poppy had it.
+    requiredTags: [ACCOUNT_TAG_KEY, APP_TAG_KEY, CONNECTION_TAG_KEY],
     limits: null,
+    // Where MailPoppy's CLOUD code connects (AgentsPoppy network-egress phase 1).
+    // Door 1 — "aws-only" is the honest value: the deployed Lambdas call SES, Cognito,
+    // S3, DynamoDB and (opt-in) the CrewPoppyRunner Lambda — no third-party endpoint
+    // anywhere in the stack. NOT "none": that value is reserved for backends a
+    // sealed no-internet VPC could enforce, and ours needs AWS service APIs.
+    // Door 2 — "email": the mail system it builds exchanges email with the outside
+    // world; that is its purpose, and the screen says so in the platform's words.
+    //
+    // Door 3 (`machine`) is DELIBERATELY ABSENT, and the reason is worth reading before
+    // adding it. AgentsPoppy 0.3.14 enforces `network.machine` on the user's machine:
+    // it refuses any connection this sidecar opens, and any fetch the tab makes, that
+    // the value does not cover. MailPoppy's desktop half connects to AWS, to
+    // mailpoppy.com (the Hub: mobile access, /api/resolve), to agentspoppy.com (the
+    // mandatory Feedback tab — exempt in the tab, not in a backend — and checkout), AND
+    // to whatever IMAP server the user types into the migration screen. No list can name
+    // that last one in advance, so the only honest value today is "user-directed", which
+    // is logged rather than enforced. Declaring "aws-only" here would silently break
+    // mobile access, checkout and every WorkMail/IMAP import in the field.
+    network: { egress: "aws-only", infrastructure: "email" },
   };
 }
 

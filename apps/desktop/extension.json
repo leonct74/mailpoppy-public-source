@@ -1,7 +1,7 @@
 {
   "id": "com.mailpoppy.desktop",
   "name": "MailPoppy",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "Run your own private mail backend on your AWS account — deploy, manage, and tear it down.",
   "icon": "frontend/mailpoppy-icon.png",
   "bugsUrl": "https://github.com/leonct74/mailpoppy-public-source/issues",
@@ -35,7 +35,8 @@
           "ValidateTemplate",
           "GetTemplateSummary"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "Before deploying, MailPoppy asks AWS to double-check its own deployment plan, so a mistake is caught before anything is created in your account."
       },
       {
         "service": "iam",
@@ -63,7 +64,8 @@
         "actions": [
           "SimulatePrincipalPolicy"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "During setup, MailPoppy asks AWS whether the credentials you connected have enough access to finish the job — so you find out at the start, not halfway through."
       },
       {
         "service": "lambda",
@@ -233,7 +235,8 @@
         "actions": [
           "ListAllMyBuckets"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "During setup, MailPoppy looks through your storage bucket names to find its own and avoid a name clash. Names only — it never sees what is inside a bucket."
       },
       {
         "service": "cognito-idp",
@@ -247,7 +250,8 @@
           "UntagResource",
           "ListUsers"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "Creates the sign-in directory your mailboxes live in. Changing or deleting a directory is a separate permission, limited to the one MailPoppy itself created."
       },
       {
         "service": "cognito-idp",
@@ -286,7 +290,8 @@
           "SetIdentityHeadersInNotificationsEnabled",
           "DeleteSuppressedDestination"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "Sets up email for your domain: where incoming mail gets delivered, proving to other mail servers that your domain is really yours, and sending your outgoing mail."
       },
       {
         "service": "route53",
@@ -295,7 +300,8 @@
           "ListResourceRecordSets",
           "ChangeResourceRecordSets"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "Adds the DNS records that make email work for your domain — and reads what is already there first, so you can see what will change before it does."
       },
       {
         "service": "guardduty",
@@ -309,20 +315,28 @@
           "UntagResource",
           "ListTagsForResource"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "Turns on the optional virus scanning of mail attachments, if you choose it — and turns it off again when you remove MailPoppy."
       },
       {
         "service": "sts",
         "actions": [
           "GetCallerIdentity"
         ],
-        "resourceScope": "*"
+        "resourceScope": "*",
+        "reason": "Checks which AWS account it is connected to, so setup can show you where it is about to work before it starts."
       }
     ],
     "requiredTags": [
+      "agentspoppy:account",
+      "agentspoppy:app",
       "agentspoppy:connection"
     ],
-    "limits": null
+    "limits": null,
+    "network": {
+      "egress": "aws-only",
+      "infrastructure": "email"
+    }
   },
   "frontend": {
     "entry": "frontend/index.html"
